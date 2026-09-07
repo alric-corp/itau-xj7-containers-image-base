@@ -1,0 +1,1 @@
+# itau-xj7-containers-image-base
