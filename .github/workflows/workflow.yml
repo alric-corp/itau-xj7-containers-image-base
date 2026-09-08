@@ -1,13 +1,29 @@
 name: Build & Push Multi-Arch Distroless Image
 
 on:
+  # Allow-list (em vez de paths-ignore): só dispara pra mudanças que
+  # realmente afetam a imagem publicada. paths-ignore com só "**.md" tinha
+  # um buraco — qualquer outro arquivo não-.md (ex.: cve-triage.lock.yml,
+  # que é .yml) disparava o build inteiro das 12 imagens sem necessidade.
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
+    paths:
+      - 'frameworks/**'
+      - 'distroless/**'
+      - 'melange/**'
+      - '.github/workflows/workflow.yml'
+      - '.github/workflows/build-base-images.yml'
+      - '.github/workflows/promote-stable.yml'
+      - 'Makefile'
   pull_request:
-    paths-ignore:
-      - '**.md'
+    paths:
+      - 'frameworks/**'
+      - 'distroless/**'
+      - 'melange/**'
+      - '.github/workflows/workflow.yml'
+      - '.github/workflows/build-base-images.yml'
+      - '.github/workflows/promote-stable.yml'
+      - 'Makefile'
   schedule:
     - cron: "0 3 * * *"   # build diário: 00:00 America/Sao_Paulo (03:00 UTC)
     - cron: "0 9 * * *"   # promoção diária: 06:00 America/Sao_Paulo (09:00 UTC) — soak de ~6h após o build
