@@ -1,8 +1,21 @@
 name: Diagnostic Callee
 on:
   workflow_call:
+    inputs:
+      aws-region:
+        type: string
+        required: true
+      aws-role-arn:
+        type: string
+        required: true
+      frameworks:
+        type: string
 jobs:
   hi:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.frameworks) }}
     steps:
-      - run: echo "hi from reusable workflow"
+      - run: echo "framework=${{ matrix.framework }} region=${{ inputs.aws-region }} role=${{ inputs.aws-role-arn }}"

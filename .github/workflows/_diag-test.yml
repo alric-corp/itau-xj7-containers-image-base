@@ -1,7 +1,16 @@
 name: Diagnostic Test
 on:
   workflow_dispatch:
+    inputs:
+      frameworks:
+        type: string
+        default: '["go1-26"]'
 
 jobs:
   call-it:
+    if: github.event.schedule != '0 9 * * *'
     uses: ./.github/workflows/_diag-callee.yml
+    with:
+      aws-region: ${{ vars.AWS_REGION }}
+      aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
+      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21","go1-26"]' }}
