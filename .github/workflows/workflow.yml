@@ -28,10 +28,6 @@ permissions:
   contents: read
   attestations: write
 
-# TODO: restaurar a lista completa de frameworks (os 12) nos dois `with:`
-# abaixo assim que o teste real com go1-26 fechar de ponta a ponta (build +
-# assinatura + attestation no ECR). Reduzido de propósito enquanto iteramos
-# no fix do pipeline, pra não disparar os 12 builds em paralelo a cada push.
 jobs:
   build-base-images:
     if: github.event.schedule != '0 9 * * *'
@@ -39,7 +35,7 @@ jobs:
     with:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
-      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["go1-26"]' }}
+      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]' }}
 
   promote-stable:
     if: github.event.schedule == '0 9 * * *'
@@ -48,4 +44,4 @@ jobs:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
       soak-hours: 6
-      frameworks: '["go1-26"]'
+      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'

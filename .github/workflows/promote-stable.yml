@@ -29,6 +29,18 @@ on:
         description: "Horas mínimas que um build imutável precisa esperar antes de poder virar stable."
         type: number
         default: 6
+  # Dispatch manual para testar o gate de promoção sem esperar as 6h reais de
+  # soak (ex.: soak-hours=0 contra um build que acabou de ser publicado).
+  workflow_dispatch:
+    inputs:
+      frameworks:
+        description: 'JSON array de frameworks a avaliar (ex.: ["go1-26"])'
+        type: string
+        default: '["go1-26"]'
+      soak-hours:
+        description: "Horas mínimas de soak (use 0 para testar contra um build recém-publicado)"
+        type: number
+        default: 6
 
 permissions:
   id-token: write
@@ -49,11 +61,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # inputs.aws-region/aws-role-arn só existem no workflow_call (o path de
+      # produção, chamado por workflow.yml); no workflow_dispatch direto
+      # (usado pra testar o gate manualmente) caem para as vars do repo.
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ inputs.aws-role-arn }}
-          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: ${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws-region || vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
