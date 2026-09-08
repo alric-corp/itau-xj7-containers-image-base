@@ -14,7 +14,7 @@ on:
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
       - '.github/workflows/validate-base-images.yml'
-      - '.github/scripts/scan_images.py'
+      - '.github/scripts/**'
       - '.github/workflows/promote-stable.yml'
       - 'Makefile'
   pull_request:
@@ -25,7 +25,7 @@ on:
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
       - '.github/workflows/validate-base-images.yml'
-      - '.github/scripts/scan_images.py'
+      - '.github/scripts/**'
       - '.github/workflows/promote-stable.yml'
       - 'Makefile'
   schedule:

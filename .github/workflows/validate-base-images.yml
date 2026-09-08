@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 env:
-  # Fixação por digest e atualização controlada permanecem no item M09.
-  APKO_IMAGE: cgr.dev/chainguard/apko:latest
-  MELANGE_IMAGE: cgr.dev/chainguard/melange:latest
+  # Digests verificados em 08/09/2026; atualizações de ferramentas exigem revisão.
+  APKO_IMAGE: cgr.dev/chainguard/apko@sha256:37e3aa165456e6c55fcded1e11af7ae9b010af914f0b25015c9a4247ec139c67
+  MELANGE_IMAGE: cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b
   TRIVY_VERSION: v0.72.0
 
 jobs:
@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
         with:
           platforms: arm64
 
@@ -45,7 +45,7 @@ jobs:
             --signing-key melange.rsa
 
       - name: Upload melange repository
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: melange-repo
           path: |
@@ -63,9 +63,9 @@ jobs:
         framework: ${{ fromJSON(inputs.frameworks) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Install apko (latest stable)
+      - name: Install pinned apko
         run: |
           set -eu
           docker create --name apko-extract "$APKO_IMAGE"
@@ -75,7 +75,7 @@ jobs:
           ./apko version
 
       - name: Download melange repository
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: melange-repo
           path: melange-repo
@@ -85,21 +85,17 @@ jobs:
           FRAMEWORK: ${{ matrix.framework }}
         run: echo "IMAGE_NAME=localhost/image-base-${FRAMEWORK}" >> "$GITHUB_ENV"
 
-      - name: Build image for each architecture (local validation)
+      - name: Build multi-architecture OCI artifact once
         env:
           FRAMEWORK: ${{ matrix.framework }}
         run: |
           set -eu
-          declare -A ARCH_MAP=( [x86_64]=amd64 [aarch64]=arm64 )
-          for APKO_ARCH in x86_64 aarch64; do
-            OCI_ARCH="${ARCH_MAP[$APKO_ARCH]}"
-            echo "Building ${IMAGE_NAME} for ${APKO_ARCH}"
-            ./apko build \
-              --arch "$APKO_ARCH" \
-              --repository-append melange-repo/packages \
-              --keyring-append melange-repo/melange.rsa.pub \
-              "frameworks/${FRAMEWORK}.yaml" "${IMAGE_NAME}" "${FRAMEWORK}-${OCI_ARCH}.tar"
-          done
+          mkdir -p "${FRAMEWORK}.oci/sbom"
+          ./apko build --arch x86_64,aarch64 --sbom-path "${FRAMEWORK}.oci/sbom" \
+            --repository-append melange-repo/packages \
+            --keyring-append melange-repo/melange.rsa.pub \
+            "frameworks/${FRAMEWORK}.yaml" "$IMAGE_NAME" "${FRAMEWORK}.oci"
+          python3 -B .github/scripts/oci_artifact.py prepare "${FRAMEWORK}.oci"
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
@@ -109,13 +105,22 @@ jobs:
       - name: Scan both architectures
         env:
           FRAMEWORK: ${{ matrix.framework }}
-        run: python3 -B .github/scripts/scan_images.py local "$FRAMEWORK"
+        run: python3 -B .github/scripts/scan_images.py oci "${FRAMEWORK}.oci"
 
       - name: Preserve scan evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: build-scans-${{ matrix.framework }}-${{ github.run_attempt }}
           path: reports/
           retention-days: 30
           if-no-files-found: warn
+
+      - name: Preserve validated OCI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: validated-oci-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: ${{ matrix.framework }}.oci/
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error

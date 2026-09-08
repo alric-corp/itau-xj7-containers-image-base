@@ -56,7 +56,7 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
-Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um build imutável sobrevive à janela de soak sem novas CVEs — veja [Gate de promoção](#gate-de-promoção-para-stable-canário-de-soak)) e **`<ddmmaa>-<hhmm>`** (referência imutável de um build específico, ex.: `010726-0152` para 1º de julho de 2026 às 01:52 no horário de Brasília, GMT-3).
+Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um build imutável sobrevive à janela de soak sem novas CVEs — veja [Gate de promoção](#gate-de-promoção-para-stable-canário-de-soak)) e **`<ddmmaa>-<hhmm>-r<run_id>-a<tentativa>`** (identificador único por execução/tentativa; as tags históricas `ddmmaa-hhmm` continuam reconhecidas pelo seletor).
 
 ## Pré-requisitos
 
@@ -199,10 +199,10 @@ flowchart TD
     MAIN["main: push / dispatch / build diário"] --> B["build-base-images.yml"]
     B --> V
     V --> M["Melange: bundle amd64 + arm64"]
-    M --> A["Apko: build local por framework"]
-    A --> S["Trivy: amd64 + arm64<br/>relatórios JSON e hashes dos tars"]
+    M --> A["Apko: layout OCI por framework"]
+    A --> S["Trivy: amd64 + arm64<br/>relatórios JSON e digests OCI"]
     S --> G["Todos os frameworks selecionados aprovados"]
-    G -->|"somente execução autorizada na main"| PUB["Job de publicação<br/>OIDC + apko publish + assinatura/provenance"]
+    G -->|"somente execução autorizada na main"| PUB["Job de publicação<br/>OIDC + cópia OCI + assinatura/provenance"]
     PUB --> ECR[("ECR: tag de build")]
     H["Schedule horário"] --> P["promote-stable.yml"]
     ECR --> P
@@ -210,11 +210,13 @@ flowchart TD
     SOAK --> STABLE["stable"]
 ```
 
-O build local usa `apko build` para gerar um tar por arquitetura. O script [scan_images.py](.github/scripts/scan_images.py) executa Trivy nas duas arquiteturas, mesmo se a primeira falhar, e retorna falha se qualquer uma for reprovada ou não puder ser escaneada. Os relatórios JSON e os hashes SHA-256 dos tars ficam nos artifacts `build-scans-<framework>-<tentativa>`, com retenção de 30 dias. Os metadados do Trivy identificam a imagem analisada; o hash do tar é uma evidência do arquivo local, não o digest OCI do índice publicado.
+O build do CI usa `apko build` uma única vez por framework para produzir um layout OCI multi-arquitetura. [oci_artifact.py](.github/scripts/oci_artifact.py) verifica hashes/tamanhos dos blobs, presença de amd64/arm64 e coerência dos configs, preservando o índice original em um layout transportável. [scan_images.py](.github/scripts/scan_images.py) fornece ao Trivy uma visão com apenas o manifest da arquitetura solicitada e confere a arquitetura no relatório: o teste real mostrou que somente `--platform` não bastava para layouts OCI multi-arquitetura no Trivy 0.72.0.
+
+Relatórios JSON e digests dos manifests ficam nos artifacts `build-scans-<framework>-<tentativa>` por 30 dias. O layout aprovado, sua evidência e os SBOMs são transferidos em `validated-oci-<framework>-<tentativa>` por três dias. Uma falha em qualquer arquitetura impede a disponibilização desse artifact para publicação.
 
 A validação usa matrix com `fail-fast: false`. **A publicação só começa se todos os frameworks selecionados passarem**; uma falha de validação bloqueia o lote daquele run. O job de publicação tem matrix própria e autenticação AWS restrita à `main`. Para publicar um subconjunto validado, uma execução manual pode selecionar os frameworks desejados.
 
-**Identidade do artefato ainda pendente (M02):** `apko publish` continua reconstruindo a imagem após a validação. Sem fixação integral dos insumos e comparação dos manifests, não há garantia de que o conteúdo publicado seja idêntico ao escaneado. Essa lacuna está registrada na [RFC-013](RFC-013-Image-Base-Completa-com-Mermaid.md).
+**Identidade do artefato (M02):** o publicador baixa o layout aprovado do mesmo run/tentativa, verifica novamente sua integridade e usa Skopeo com `copy --all --preserve-digests`. O digest devolvido pela cópia precisa ser igual ao índice validado; não há novo build nem resolução de pacotes nesse job. A cópia foi comprovada em ECR exclusivo de teste; a integração completa da publicação na `main` ainda depende da validação do workflow autenticado.
 
 O gate mantém `--ignore-unfixed` e severidades `CRITICAL,HIGH,MEDIUM,LOW`, além do scan de segredos. O scan aprovado representa apenas a política configurada e os dados disponíveis ao Trivy naquele momento. A triagem automática de CVEs permanece pausada; sua futura reativação deverá consumir os relatórios JSON, pois as tabelas em logs deixaram de ser a saída principal.
 
@@ -224,13 +226,13 @@ QEMU continua restrito ao job melange, que executa comandos no sandbox do pacote
 
 A tag `stable` **não** é publicada no mesmo run que builda a imagem. `promote-stable.yml` roda separadamente a cada hora (minuto 17) e só promove um build para `stable` se, decorrida a janela de soak, um **re-scan** do mesmo digest continuar limpo:
 
-1. Lista as imagens do repositório ECR e seleciona o índice OCI/Docker com tag de build válida (`ddmmaa-hhmm`) mais recente entre os que já completaram o soak. Descarta o digest já marcado como `stable` e candidatos com data de push anterior ou igual à dele (`.github/scripts/find_promotion_candidate.py`). Um build recente ainda em soak não impede a seleção de outro elegível.
+1. Lista as imagens do repositório ECR e seleciona o índice OCI/Docker com tag de build válida (`ddmmaa-hhmm`, com sufixo opcional `-r<run_id>-a<tentativa>`) mais recente entre os que já completaram o soak. Descarta o digest já marcado como `stable` e candidatos com data de push anterior ou igual à dele (`.github/scripts/find_promotion_candidate.py`). Um build recente ainda em soak não impede a seleção de outro elegível.
 2. Re-escaneia esse digest com Trivy em `linux/amd64` e `linux/arm64` (`--ignore-unfixed`). Uma falha em qualquer arquitetura bloqueia a promoção. Os relatórios e a referência por digest ficam nos artifacts `promotion-scans-<framework>-<tentativa>` por 30 dias.
 3. Se o re-scan continuar limpo, promove com `docker buildx imagetools create --tag <imagem>:stable <imagem>@<digest>` — retagueia o índice multi-arch por referência, sem baixar/re-subir camadas.
 
 Isso é um canário de **tempo/CVE**, não um canário de tráfego real contra aplicações consumidoras — não há apps de referência nesta POC pra validar contra. Validar contra consumidores reais (deploy canário, smoke test de aplicação) é responsabilidade de cada pipeline de deploy downstream. O gate reavalia vulnerabilidades conhecidas no momento do scan, nas severidades configuradas e com correção disponível; ele não garante ausência de vulnerabilidades durante toda a janela de soak.
 
-O filtro de tipo de índice não verifica seu conteúdo, suas plataformas nem assinatura/provenance. A inspeção do índice e a verificação de assinatura/provenance permanecem pendentes conforme M03 da [RFC-013](RFC-013-Image-Base-Completa-com-Mermaid.md). A seleção e a atualização de `stable` são serializadas por role/região/framework dentro do mesmo repositório GitHub, tanto no dispatch direto quanto no workflow reusável; atualizações externas não participam desse controle. Os testes dos scripts rodam em PRs/pushes que alterem os scripts e antes da autenticação AWS na promoção. Para executá-los localmente, sem Docker ou AWS:
+O filtro de promoção por metadados ECR ainda não verifica o conteúdo do índice nem assinatura/provenance. A validação do layout antes do push já verifica as plataformas e os blobs. A inspeção do índice e a verificação de assinatura/provenance permanecem pendentes conforme M03 da [RFC-013](RFC-013-Image-Base-Completa-com-Mermaid.md). A seleção e a atualização de `stable` são serializadas por role/região/framework dentro do mesmo repositório GitHub, tanto no dispatch direto quanto no workflow reusável; atualizações externas não participam desse controle. Os testes dos scripts rodam em PRs/pushes que alterem os scripts e antes da autenticação AWS na promoção. Para executá-los localmente, sem Docker ou AWS:
 
 ```bash
 python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
@@ -314,6 +316,12 @@ make clean                                                # remove chave e pacot
 
 Manter uma imagem base atualizada e escaneada pra 5 linguagens diferentes costuma acabar em um de dois lugares: um Dockerfile artesanal por time/projeto que ninguém revisita depois que funciona uma vez, ou a decisão de aceitar uma imagem genérica de distro completa (com o pacote de ferramentas — e CVEs — que vem junto) só porque é o caminho de menor resistência.
 
-O `image-base` centraliza as 12 combinações linguagem+versão+variante em `frameworks/*.yaml`, com validação das duas arquiteturas antes do job de publicação e nova avaliação por digest antes de promover para `stable`. A identidade entre build validado e publicado e os demais controles pendentes estão registrados na RFC-013.
+O `image-base` centraliza as 12 combinações linguagem+versão+variante em `frameworks/*.yaml`, com validação das duas arquiteturas antes do job de publicação e nova avaliação por digest antes de promover para `stable`. A identidade do artefato é preservada na cópia OCI; o checklist da RFC-013 distingue implementação, testes reais e controles ainda pendentes.
 
 Isso não substitui a imagem final da sua aplicação — é o ponto de partida (`FROM <registro-ecr>/image-base-<framework>:stable`) pra não ter que decidir, de novo, quais pacotes tirar de uma imagem Ubuntu/Alpine pra chegar a um resultado parecido.
+
+## Dependências do pipeline e tags
+
+As Actions diretas dos workflows de build/validação/promoção estão fixadas por SHA; apko, melange e Skopeo usam digests. Dependabot propõe atualizações semanais de Actions. A atualização dos digests das ferramentas ainda exige revisão manual, incluindo o Makefile; automação e política de atualização completas permanecem em M09.
+
+O workflow de publicação configura tags imutáveis no ECR, com exceção exata para `stable`, incluindo repositórios existentes. As tags novas incluem run ID e tentativa. A compatibilidade das assinaturas/provenance com essa configuração deve ser validada no workflow autenticado antes da liberação. Reexecuções parciais que não gerem o artifact da tentativa atual falham na obtenção do layout; usar reexecução completa para refazer a validação e publicação.

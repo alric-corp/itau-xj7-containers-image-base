@@ -30,6 +30,12 @@ class CandidateTests(unittest.TestCase):
     def test_empty_repository(self):
         self.assertIsNone(self.select([]))
 
+    def test_run_and_attempt_tags_are_accepted(self):
+        self.assertIsNotNone(self.select([image(tag="080926-0000-r12345-a2")]))
+        for tag in ("080926-0000-r0-a1", "080926-0000-r123-a0", "080926-0000-r123"):
+            with self.subTest(tag=tag):
+                self.assertIsNone(self.select([image(tag=tag)]))
+
     def test_newest_eligible_build_wins_regardless_of_input_order(self):
         old = image(hours=12, digest="sha256:old")
         new = image(hours=8, digest="sha256:new")

@@ -32,11 +32,12 @@ def pushed_at(image: dict) -> datetime.datetime:
 
 
 def is_build_tag(tag: str) -> bool:
-    # Convenção atual do publicador: ddmmaa-hhmm. Alterar junto com M06.
-    if not re.fullmatch(r"[0-9]{6}-[0-9]{4}", tag):
+    # Mantém compatibilidade com builds anteriores à identificação por run.
+    match = re.fullmatch(r"([0-9]{6}-[0-9]{4})(?:-r[1-9][0-9]*-a[1-9][0-9]*)?", tag)
+    if not match:
         return False
     try:
-        datetime.datetime.strptime(tag, "%d%m%y-%H%M")
+        datetime.datetime.strptime(match[1], "%d%m%y-%H%M")
     except ValueError:
         return False
     return True

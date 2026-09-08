@@ -140,21 +140,33 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 
 **Validação da primeira entrega em ambiente remoto**
 
-- [ ] Executar os testes no GitHub Actions e registrar o link do run.
+- [x] Executar os testes no GitHub Actions: [run 34187982413](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34187982413), 21 testes aprovados na primeira versão do PR.
 - [ ] Validar a seleção com respostas reais do ECR, incluindo imagem já estável, candidatos em soak e artefatos auxiliares.
 - [ ] Validar o fluxo de promoção no ambiente de teste e registrar run e digest resultante.
+
+**Terceira entrega — testes reais e continuação, 08/09/2026**
+
+- [x] **M01/M05 — PR real:** [run 34187982748](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34187982748): melange e builds concluídos, 11 frameworks aprovados nas duas arquiteturas; .NET 8 bloqueado em ambas por CVEs corrigíveis. Artifacts de todos os scans preservados; jobs de publicação/promoção ignorados no PR. Teste de fork ainda pendente.
+- [x] **M02 — implementação:** build único em layout OCI, verificação de blobs/plataformas, transferência de artifact aprovado e cópia Skopeo com preservação/comparação de digests, sem reconstrução.
+- [x] **M02 — teste ECR isolado:** cópia do layout Node.js 24 para `image-base-validation-nodejs24` preservou o índice `sha256:49d0c59ce62eae51bf5f507920d45fea626145e64fa8c3186afe62626e8d90ed` e seus dois manifests. Teste manual com credenciais locais; não equivale a validar OIDC/assinatura do workflow na main.
+- [x] **M01/M02 — correção descoberta em teste real:** Trivy 0.72.0 selecionou amd64 nas duas chamadas contra um layout OCI multi-arquitetura. O scanner agora recebe uma visão com um único manifest e confere a arquitetura no relatório. Scans reais corrigidos confirmaram amd64 e arm64 distintos, sem CVEs bloqueantes no layout Node.js 24 testado.
+- [x] **M06 — implementação:** tags com run/tentativa, compatibilidade do seletor com tags históricas e configuração ECR `IMMUTABLE_WITH_EXCLUSION` com exceção exata para `stable`.
+- [x] **M06 — teste ECR isolado:** sobrescrita de `review-pr1` rejeitada com `ImageTagAlreadyExistsException`; `stable` pôde ser alterada e restaurada ao índice original no repositório exclusivo de teste. Repositórios de consumo não foram alterados.
+- [x] **M09 — fixação inicial:** Actions diretas de build/validação/promoção por SHA; apko/melange/Skopeo por digest, incluindo Makefile para apko/melange. Dependabot semanal para Actions configurado. Atualizações de digests de ferramentas ainda manuais.
+- [ ] **M05 — corrigir IAM:** inspeção real identificou trust policy com wildcard de repositório/ref; restringir ao repositório e branch autorizados. A política remota ainda não foi alterada.
+- [ ] Validar a versão com layout OCI no GitHub e executar o fluxo autenticado completo, incluindo assinatura/provenance, antes do merge/liberação.
 
 **Pendências por melhoria**
 
 - [ ] **M01 — validação remota:** executar scans reais nas duas arquiteturas, confirmar bloqueio de publicação/promoção e auditar os relatórios em artifacts; comprovar vínculo com os manifests publicados junto com M02.
-- [ ] **M02:** assegurar identidade entre artefatos validados e publicados, inclusive quando o repositório de pacotes mudar entre as etapas.
+- [ ] **M02 — integração final:** validar no workflow autenticado a cópia OCI já implementada e comprovada manualmente no ECR, incluindo obtenção do artifact do run/tentativa e falhas por adulteração.
 - [ ] **M03 — restante:** inspecionar plataformas do índice e verificar assinatura, identidade autorizada e provenance; testar rejeição de imagens sem essas evidências.
 - [ ] **M04 — validação remota:** confirmar execução horária e ausência de regressão com execuções concorrentes no GitHub/ECR; medir atrasos de fila e scheduler.
 - [ ] **M05 — validação remota:** executar PRs internos/de forks e publicação na `main`; verificar permissões efetivas e trust policy OIDC na conta AWS.
-- [ ] **M06:** adotar tags únicas, configurar imutabilidade no ECR, testar rejeição de sobrescrita e compatibilidade com assinaturas e documentar consumo por digest.
+- [ ] **M06 — integração final:** confirmar compatibilidade com assinaturas/provenance e aplicar/validar a configuração dos repositórios de consumo pelo workflow autorizado.
 - [ ] **M07:** separar build/runtime em Go, .NET e Java; comparar inventário e tamanho e executar aplicações mínimas.
 - [ ] **M08:** implementar e executar testes funcionais das imagens finais por framework e arquitetura, incluindo TLS, permissões e filesystem somente leitura.
-- [ ] **M09:** fixar ferramentas por digest e Actions por SHA, automatizar atualizações e registrar versões efetivas.
+- [ ] **M09 — restante:** automatizar também atualizações dos digests de ferramentas e registrar versões efetivas; validar os PRs do Dependabot e a política de revisão.
 - [ ] **M10:** versionar e verificar a integridade do bundle corporativo; testar parsing e confiança TLS positiva/negativa em cada runtime.
 - [ ] **M11 — restante:** dar visibilidade às CVEs sem correção, medir tempo de atualização e formalizar SLA e política de exceções.
 
@@ -164,6 +176,7 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 | --- | --- | --- | --- |
 | 08/09/2026 | Primeira implementação: M03/M04 parciais, testes de regressão, input obrigatório e ajuste documental de M11 | [Seletor](.github/scripts/find_promotion_candidate.py), [14 testes](.github/scripts/test_find_promotion_candidate.py) e [workflow de testes](.github/workflows/test-promotion.yml). Execução local: 14 testes aprovados; `actionlint` aprovado nos quatro workflows da entrega; `git diff --check` sem erros. | Alterações locais, sem commit/PR/run remoto registrado. Validação GitHub/ECR pendente; M03/M04/M11 continuam parciais. |
 | 08/09/2026 | Segunda implementação: M01/M05 parciais e configuração de agendamento/concorrência de M04 | [Validação sem AWS](.github/workflows/validate-base-images.yml), [scanner](.github/scripts/scan_images.py), [testes do scanner](.github/scripts/test_scan_images.py) e [promoção](.github/workflows/promote-stable.yml). Execução local: 21 testes aprovados, oito cenários de roteamento verificados e `actionlint` aprovado nos cinco workflows da entrega. | Scanner simulado nos testes; sem builds/scans reais ou execução no GitHub/ECR nesta entrega. A publicação depende do sucesso de todo o lote selecionado. M02 permanece aberto: `apko publish` ainda reconstrói a imagem. |
+| 08/09/2026 | Terceira entrega: PR real, cópia OCI, tags imutáveis e ferramentas fixadas | [PR #1](https://github.com/alric-corp/itau-xj7-containers-image-base/pull/1), runs referenciados acima e teste no ECR exclusivo `image-base-validation-nodejs24`, digest registrado no checklist. | PR em rascunho; sem merge. .NET 8 permanece bloqueado por CVEs. O teste ECR foi manual e não valida OIDC/assinatura do workflow. M03, M07, M08, M10 e demais validações remotas permanecem pendentes. |
 
 Comando para repetir os testes locais, sem Docker ou AWS:
 

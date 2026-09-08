@@ -14,8 +14,8 @@ MELANGE_REPO := melange/packages
 
 # apko/melange sempre rodam via `docker run` (nao como binario nativo extraido)
 # para o Makefile funcionar em qualquer SO/arquitetura de dev (Mac, Linux, WSL).
-DOCKER_MELANGE := docker run --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange:latest
-DOCKER_APKO    := docker run --rm -v "$(CURDIR)":/work -w /work -v /var/run/docker.sock:/var/run/docker.sock cgr.dev/chainguard/apko:latest
+DOCKER_MELANGE := docker run --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b
+DOCKER_APKO    := docker run --rm -v "$(CURDIR)":/work -w /work -v /var/run/docker.sock:/var/run/docker.sock cgr.dev/chainguard/apko@sha256:37e3aa165456e6c55fcded1e11af7ae9b010af914f0b25015c9a4247ec139c67
 
 .PHONY: help list keygen bundle build run clean
 
@@ -42,7 +42,7 @@ keygen: $(MELANGE_KEY)
 
 # Pacote bundle-pem-test (bundle.pem da Mozilla), consumido por todos os frameworks.
 $(MELANGE_REPO): $(MELANGE_KEY) melange/bundle-pem-test.yaml
-	docker run --privileged --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange:latest \
+	docker run --privileged --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b \
 		build bundle-pem-test.yaml --arch x86_64,aarch64 --signing-key .local-keys/melange.rsa
 	@touch $(MELANGE_REPO)
 

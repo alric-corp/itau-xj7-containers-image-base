@@ -54,6 +54,20 @@ class ScanTests(unittest.TestCase):
         for arch in ("amd64", "arm64"):
             self.assertIn("error", json.loads(Path(f"reports/evidence-{arch}.json").read_text()))
 
+    def test_oci_scan_rejects_report_for_the_wrong_architecture(self):
+        def scanner(command, **kwargs):
+            output = Path(command[command.index("--output") + 1])
+            output.write_text(json.dumps({"Metadata": {"ImageConfig": {"architecture": "amd64"}}}))
+            return subprocess.CompletedProcess(command, 0)
+        metadata = {"digest": "sha256:index", "platforms": {
+            "linux/amd64": "sha256:amd64", "linux/arm64": "sha256:arm64"}}
+        with patch("scan_images.verify", return_value=metadata), patch("scan_images.platform_view"), \
+             patch("scan_images.subprocess.run", side_effect=scanner) as run:
+            self.assertEqual(scan_images("oci", "image.oci"), 1)
+            self.assertEqual(run.call_count, 2)
+        evidence = json.loads(Path("reports/evidence-arm64.json").read_text())
+        self.assertIn("esperado arm64", evidence["error"])
+
     def test_local_scan_records_hash_of_each_archive(self):
         for arch in ("amd64", "arm64"):
             Path(f"nodejs24-{arch}.tar").write_bytes(arch.encode())

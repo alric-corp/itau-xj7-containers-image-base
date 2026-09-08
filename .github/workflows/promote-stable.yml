@@ -64,7 +64,7 @@ jobs:
         framework: ${{ fromJSON(inputs.frameworks) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Test promotion candidate selection
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
@@ -73,14 +73,14 @@ jobs:
       # produção, chamado por workflow.yml); no workflow_dispatch direto
       # (usado pra testar o gate manualmente) caem para as vars do repo.
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
           role-to-assume: ${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region || vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
       - name: List images in repository
         env:
@@ -115,7 +115,7 @@ jobs:
 
       - name: Preserve promotion scan evidence
         if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: promotion-scans-${{ matrix.framework }}-${{ github.run_attempt }}
           path: reports/
