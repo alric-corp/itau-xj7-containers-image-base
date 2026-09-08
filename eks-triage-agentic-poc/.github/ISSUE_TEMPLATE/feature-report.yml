@@ -1,0 +1,43 @@
+name: "[ENHANCEMENT] Enhancement Report"
+description: "Abra um registro de nova funcionalidade, melhoria ou oportunidade identificada no produto. Faça sua sugestão, contribua!"
+title: "[ENHANCEMENT] "
+labels: ["type: enhancement", "waiting-for-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reservar um tempo para preencher este registro de nova funcionalidade, melhoria ou oportunidade!
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: Descrição
+      description: Resuma sua solicitação de nova funcionalidade, melhoria ou oportunidade
+      placeholder: Conte-nos sobre a necessidade
+    validations:
+      required: true
+
+  - type: textarea
+    id: oqueesperamos
+    attributes:
+      label: O que esperamos
+      description: O que espera que essa solicitação traga de benefícios para você e para a comunidade
+      placeholder: Conte-nos sobre o benefício esperado
+    validations:
+      required: true
+
+  - type: textarea
+    id: information
+    attributes:
+      label: Mais informações
+      description: Adicione outras informações que considera importantes
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Informações úteis para abertura de um Enhancement Report
+      description: Antes de submeter, leia as dicas de abertura
+      options:
+        - label: Eu li as dicas e concordo em ajudar com mais informações
+          required: true

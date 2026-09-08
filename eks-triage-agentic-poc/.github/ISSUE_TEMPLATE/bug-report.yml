@@ -1,0 +1,84 @@
+name: "[BUG] Bug Report"
+description: "Abra um registro de bug identificado no produto que IMPEDE a implantação/atualização e precisa de urgência na correção"
+title: "[BUG] "
+labels: ["type: bug", "waiting-for-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reservar um tempo para preencher este registro de bug!
+        Não inclua credenciais, tokens, segredos ou logs sem sanitização.
+
+  - type: input
+    id: comunidade
+    attributes:
+      label: Comunidade
+      description: Informe sua comunidade ou a que está sendo afetada
+      placeholder: ex. Cloud
+    validations:
+      required: false
+
+  - type: textarea
+    id: oqueaconteceu
+    attributes:
+      label: O que aconteceu?
+      description: Resumo do problema
+      placeholder: Conte-nos sobre o problema, cenário, logs sanitizados, mensagens de erro e como reproduzir
+      value: "Sobre o erro ou problema"
+    validations:
+      required: true
+
+  - type: input
+    id: eksversion
+    attributes:
+      label: Versão EKS
+      description: Versão do cluster utilizado onde ocorre o problema
+      placeholder: ex. 1.31
+    validations:
+      required: true
+
+  - type: input
+    id: tagversion
+    attributes:
+      label: Versão TAG
+      description: Versão do código inner-source utilizado onde ocorre o problema
+      placeholder: ex. 8.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: conta
+    attributes:
+      label: ID da Conta AWS
+      description: Para esta POC, utilize somente um valor fictício. Em produção, avalie se o ID completo é realmente necessário.
+      placeholder: ex. 000000000000
+    validations:
+      required: true
+
+  - type: input
+    id: gitrepo
+    attributes:
+      label: Repositório GIT
+      description: Repositório com o código consumidor utilizado onde ocorre o problema
+      placeholder: ex. https://github.com/SUA_ORG/exemplo-eks
+    validations:
+      required: true
+
+  - type: input
+    id: clustername
+    attributes:
+      label: Nome do Cluster
+      description: Para esta POC, utilize somente um nome fictício
+      placeholder: ex. cluster-demo
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: information
+    attributes:
+      label: Mais informações
+      description: Antes de submeter, leia as dicas de como abrir um Bug Report
+      options:
+        - label: Eu li as dicas e concordo em ajudar com mais informações
+          required: true

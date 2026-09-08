@@ -16,9 +16,10 @@ on:
         type: string
 
 permissions:
-  id-token: write      # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
+  id-token: write           # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
   contents: read
-  attestations: write  # obrigatório para actions/attest-build-provenance
+  attestations: write       # obrigatório para actions/attest-build-provenance
+  artifact-metadata: write  # storage record da attestation (evita o warning "Failed to persist storage record")
 
 env:
   # Tool versions/images centralizados aqui para não precisar caçar em cada passo.
