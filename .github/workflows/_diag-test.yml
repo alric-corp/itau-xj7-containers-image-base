@@ -5,24 +5,11 @@ on:
       frameworks:
         type: string
         default: '["go1-26"]'
-  schedule:
-    - cron: "0 3 * * *"
-    - cron: "0 9 * * *"
 
 jobs:
-  call-it:
-    if: github.event.schedule != '0 9 * * *'
-    uses: ./.github/workflows/_diag-callee.yml
+  call-real:
+    uses: ./.github/workflows/build-base-images.yml
     with:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
-      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21","go1-26"]' }}
-
-  promote-it:
-    if: github.event.schedule == '0 9 * * *'
-    uses: ./.github/workflows/_diag-callee2.yml
-    with:
-      aws-region: ${{ vars.AWS_REGION }}
-      aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
-      soak-hours: 6
-      frameworks: '["java21","go1-26"]'
+      frameworks: ${{ inputs.frameworks }}
