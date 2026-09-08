@@ -1,11 +1,13 @@
 import json
+import io
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stderr
 
-from verify_promotion import verify_promotion
+from verify_promotion import main, verify_promotion
 
 
 IMAGE = "example.invalid/test@sha256:" + "a" * 64
@@ -18,6 +20,17 @@ def index(arches=("amd64", "arm64")):
 
 
 class VerificationTests(unittest.TestCase):
+    def test_cli_expected_errors_are_clean_and_nonzero(self):
+        for error in (ValueError("digest inválido"), KeyError("platform"),
+                      TypeError("Metadata null"), FileNotFoundError("cosign"),
+                      subprocess.CalledProcessError(10, ["cosign"], stderr="no signatures found")):
+            with self.subTest(error=error), patch("sys.argv", ["verify_promotion.py", IMAGE, REPO]), \
+                 patch("verify_promotion.verify_promotion", side_effect=error), \
+                 redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(main(), 10 if isinstance(error, subprocess.CalledProcessError) else 1)
+                self.assertTrue(stderr.getvalue().strip())
+                self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_both_verifiers_receive_digest_and_restricted_identity(self):
         with tempfile.TemporaryDirectory() as directory, patch("verify_promotion.subprocess.run", side_effect=[
             subprocess.CompletedProcess([], 0, stdout=output) for output in (index(), '[{"verified":true}]', '[{"verified":true}]')

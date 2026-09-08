@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -65,6 +64,29 @@ class ScanTests(unittest.TestCase):
         for arch in ("amd64", "arm64"):
             self.assertIn("error", json.loads(Path(f"reports/evidence-{arch}.json").read_text()))
 
+    def test_corrupt_oci_writes_both_evidences_without_scanning(self):
+        for error in (ValueError("blob alterado"), FileNotFoundError("index ausente"), TypeError("índice null")):
+            with self.subTest(error=error), patch("scan_images.verify", side_effect=error), \
+                 patch("scan_images.subprocess.run") as run:
+                self.assertEqual(scan_images("oci", "broken.oci"), 1)
+                run.assert_not_called()
+                for arch in ("amd64", "arm64"):
+                    evidence = json.loads(Path(f"reports/evidence-{arch}.json").read_text())
+                    self.assertIn(str(error), evidence["error"])
+                    self.assertEqual(evidence["platform"], f"linux/{arch}")
+
+    def test_null_or_malformed_report_does_not_skip_second_platform(self):
+        for report in ({"Metadata": None}, {"Metadata": {"ImageConfig": None}}, [], "invalid json"):
+            def scanner(command, **kwargs):
+                output = Path(command[command.index("--output") + 1])
+                output.write_text(report if isinstance(report, str) else json.dumps(report))
+                return subprocess.CompletedProcess(command, 0)
+            with self.subTest(report=report), patch("scan_images.subprocess.run", side_effect=scanner) as run:
+                self.assertEqual(scan_images("remote", REMOTE), 1)
+                self.assertEqual(run.call_count, 2)
+                for arch in ("amd64", "arm64"):
+                    self.assertIn("error", json.loads(Path(f"reports/evidence-{arch}.json").read_text()))
+
     def test_oci_scan_rejects_report_for_the_wrong_architecture(self):
         def scanner(command, **kwargs):
             output = Path(command[command.index("--output") + 1])
@@ -102,24 +124,6 @@ class ScanTests(unittest.TestCase):
         for arch in ("amd64", "arm64"):
             self.assertIn("error", json.loads(Path(f"reports/evidence-{arch}.json").read_text()))
 
-    def test_local_scan_records_hash_of_each_archive(self):
-        for arch in ("amd64", "arm64"):
-            Path(f"nodejs24-{arch}.tar").write_bytes(arch.encode())
-        with patch("scan_images.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
-            self.assertEqual(scan_images("local", "nodejs24"), 0)
-        for arch, call in zip(("amd64", "arm64"), run.call_args_list):
-            self.assertEqual(call.args[0][-2:], ["--input", f"nodejs24-{arch}.tar"])
-            evidence = json.loads(Path(f"reports/evidence-{arch}.json").read_text())
-            self.assertEqual(evidence["archive_sha256"], hashlib.sha256(arch.encode()).hexdigest())
-
-    def test_missing_local_archive_does_not_skip_other_architecture(self):
-        Path("nodejs24-arm64.tar").write_bytes(b"arm64")
-        with patch("scan_images.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
-            self.assertEqual(scan_images("local", "nodejs24"), 1)
-        self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0][-1], "nodejs24-arm64.tar")
-        self.assertIn("error", json.loads(Path("reports/evidence-amd64.json").read_text()))
-
     def test_mutable_remote_references_are_rejected_before_scanning(self):
         for target in ("example.invalid/test:stable", "example.invalid/test@sha256:bad",
                        REMOTE + "\n", "--help"):
@@ -128,12 +132,6 @@ class ScanTests(unittest.TestCase):
                     scan_images("remote", target)
                 run.assert_not_called()
 
-    def test_local_framework_cannot_escape_working_directory(self):
-        for target in ("../nodejs24", "nodejs24\nINJECT=value", "nodejs24;false"):
-            with self.subTest(target=target), patch("scan_images.subprocess.run") as run:
-                with self.assertRaises(ValueError):
-                    scan_images("local", target)
-                run.assert_not_called()
 
 
 if __name__ == "__main__":

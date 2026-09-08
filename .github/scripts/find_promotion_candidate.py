@@ -43,6 +43,13 @@ def is_build_tag(tag: str) -> bool:
     return True
 
 
+def build_tag_order(tag):
+    parts = tag.split("-")
+    return (datetime.datetime.strptime("-".join(parts[:2]), "%d%m%y-%H%M"),
+            int(parts[2][1:]) if len(parts) > 2 else 0,
+            int(parts[3][1:]) if len(parts) > 3 else 0)
+
+
 def select_candidate(details: list, soak_hours: float, now: datetime.datetime):
     """Seleciona um índice elegível sem regredir em relação ao stable atual.
 
@@ -62,13 +69,15 @@ def select_candidate(details: list, soak_hours: float, now: datetime.datetime):
             continue
         if img.get("imageManifestMediaType") not in IMAGE_INDEX_TYPES:
             continue
-        build_tags = sorted(tag for tag in img.get("imageTags", []) if is_build_tag(tag))
+        build_tags = [tag for tag in img.get("imageTags", []) if is_build_tag(tag)]
         if not build_tags:
             continue
         timestamp = pushed_at(img)
         if timestamp > cutoff or (stable_time is not None and timestamp <= stable_time):
             continue
-        candidates.append((timestamp, build_tags[0], img["imageDigest"]))
+        # O rótulo mais recente é informativo; a elegibilidade usa o push ECR.
+        tag = max(build_tags, key=build_tag_order)
+        candidates.append((timestamp, tag, img["imageDigest"]))
 
     return max(candidates, default=None)
 

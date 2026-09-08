@@ -51,6 +51,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: melange-repo
+          overwrite: true
           path: |
             melange/packages/
             melange/melange.rsa.pub
@@ -122,7 +123,10 @@ jobs:
       - name: Preserve validated OCI artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: validated-oci-${{ matrix.framework }}-${{ github.run_attempt }}
+          # Mesmo nome no run: retries do publicador reutilizam a validação
+          # aprovada. Novo conteúdo só substitui o anterior depois do scan.
+          name: validated-oci-${{ matrix.framework }}
+          overwrite: true
           path: ${{ matrix.framework }}.oci/
           retention-days: 3
           compression-level: 0

@@ -6,11 +6,11 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from image_reference import require_digest_reference
 
 
 def verify_promotion(image, repository, reports=Path("reports")):
-    if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
-        raise ValueError("imagem deve ser referenciada por digest")
+    require_digest_reference(image)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ValueError("repositório de origem inválido")
     reports.mkdir(parents=True, exist_ok=True)
@@ -42,7 +42,7 @@ def verify_promotion(image, repository, reports=Path("reports")):
         (reports / f"{name}.json").write_text(output)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image")
     parser.add_argument("repository")
@@ -51,4 +51,12 @@ if __name__ == "__main__":
         verify_promotion(args.image, args.repository)
     except subprocess.CalledProcessError as error:
         print(error.stderr or str(error), file=sys.stderr)
-        raise SystemExit(error.returncode)
+        return error.returncode
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        print(f"verificação da promoção falhou: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

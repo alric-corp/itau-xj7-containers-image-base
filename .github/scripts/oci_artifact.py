@@ -24,12 +24,21 @@ def blob(layout, descriptor):
     return path
 
 
-def verify(layout):
+def load_index(layout):
+    """Desembrulha o índice e verifica seu descriptor antes de usá-lo."""
     layout = Path(layout)
     entries = json.loads((layout / "index.json").read_text())["manifests"]
     if len(entries) != 1 or entries[0]["mediaType"] != INDEX:
         raise ValueError("layout deve conter um único índice multi-arquitetura")
     index = json.loads(blob(layout, entries[0]).read_text())
+    if index["mediaType"] != INDEX or index["schemaVersion"] != 2:
+        raise ValueError("blob não é índice OCI v2")
+    return entries[0], index
+
+
+def verify(layout):
+    layout = Path(layout)
+    descriptor, index = load_index(layout)
     platforms = {}
     for entry in index["manifests"]:
         platform = entry["platform"]
@@ -47,7 +56,7 @@ def verify(layout):
         platforms[name] = entry["digest"]
     if set(platforms) != {"linux/amd64", "linux/arm64"}:
         raise ValueError("índice deve conter amd64 e arm64")
-    return {"digest": entries[0]["digest"], "platforms": platforms}
+    return {"digest": descriptor["digest"], "platforms": platforms}
 
 
 def prepare(layout):
@@ -71,10 +80,10 @@ def prepare(layout):
 def platform_view(layout, architecture, destination):
     """Expõe um único manifest ao scanner, reutilizando os blobs originais."""
     layout, destination = Path(layout).resolve(), Path(destination)
-    root = json.loads((layout / "index.json").read_text())["manifests"][0]
-    index = json.loads(blob(layout, root).read_text())
+    _, index = load_index(layout)
     entries = [entry for entry in index["manifests"]
-               if entry["platform"] == {"os": "linux", "architecture": architecture}]
+               if entry["platform"]["os"] == "linux"
+               and entry["platform"]["architecture"] == architecture]
     if len(entries) != 1:
         raise ValueError("plataforma não encontrada ou ambígua")
     (destination / "index.json").write_text(json.dumps({"schemaVersion": 2, "mediaType": INDEX,

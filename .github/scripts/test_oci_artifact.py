@@ -61,6 +61,25 @@ class ArtifactTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             prepare(self.root)
 
+    def test_platform_variant_is_accepted_by_verifier_and_scanner_view(self):
+        self.entries[1]["platform"]["variant"] = "v8"
+        self.write_index()
+        prepare(self.root)
+        with tempfile.TemporaryDirectory() as view:
+            platform_view(self.root, "arm64", view)
+            entries = json.loads((Path(view) / "index.json").read_text())["manifests"]
+            self.assertEqual(entries, [self.entries[1]])
+
+    def test_both_readers_reject_invalid_wrapper(self):
+        prepare(self.root)
+        root = json.loads((self.root / "index.json").read_text())
+        root["manifests"].append(root["manifests"][0])
+        (self.root / "index.json").write_text(json.dumps(root))
+        with self.assertRaises(ValueError):
+            verify(self.root)
+        with tempfile.TemporaryDirectory() as view, self.assertRaises(ValueError):
+            platform_view(self.root, "arm64", view)
+
     def test_tampered_manifest_is_rejected(self):
         prepare(self.root)
         path = self.root / "blobs/sha256" / self.entries[0]["digest"].split(":")[1]

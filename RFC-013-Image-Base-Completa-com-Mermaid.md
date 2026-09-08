@@ -170,6 +170,26 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 - [x] **Testes locais:** 33 testes aprovados, incluindo rejeição de arquitetura incorreta no relatório, corrupção de blobs, ausência de plataforma e falhas dos verificadores.
 - [ ] Executar a promoção autenticada pelo workflow após integração autorizada na main; os testes positivos/negativos acima foram executados manualmente contra o ECR.
 
+**Quinta entrega — revisão dos 13 achados, 08/09/2026**
+
+As caixas abaixo registram correções implementadas e verificadas localmente; testes remotos específicos ainda pendentes estão separados ao final.
+
+- [x] **R01 / M01:** falha na verificação inicial OCI gera evidência de erro para ambas as arquiteturas, sem iniciar Trivy. A gravação pressupõe diretório de relatórios gravável; falta de espaço/permissão ainda pode impedir evidências.
+- [x] **R02 / M01:** JSON nulo ou estruturalmente inválido do scanner é tratado e não impede a tentativa da segunda arquitetura.
+- [x] **R03 / M02:** artifact aprovado com nome por framework no mesmo run, independente da tentativa do publicador. Revalidação substitui apenas após scan aprovado; `needs: validate` continua exigindo sucesso do lote. `melange-repo` também permite substituição em reexecução completa. [Semântica de overwrite](https://github.com/actions/upload-artifact#overwriting-an-artifact).
+- [x] **R04 / M01:** seleção da visão OCI considera campos os/architecture, preservando metadados adicionais como `variant: v8`.
+- [x] **R05 / M03:** CLI da verificação trata erros de dados e ferramentas ausentes com mensagem em stderr e status não zero, preservando o código do subprocesso quando aplicável.
+- [x] **R06 / M04:** rótulo usa data cronológica e desempate numérico por run/tentativa; seleção do digest e soak continuam baseados no push ECR.
+- [x] **R07 / M04:** removida permissão para evento push da promoção, alinhando aos chamadores atuais. Ressalva: não era intrinsecamente código morto, pois workflows reutilizáveis [herdam o contexto do chamador](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#github-context).
+- [x] **R08 / M03:** todos os passos condicionais da promoção exigem `skip == 'false'`. Output vazio não inicia verificações nem promoção. O código anterior não pulava as verificações; a mudança torna a intenção explícita.
+- [x] **R09 / M02:** publicador verifica os blobs uma vez e transfere o digest esperado por output de step; a cópia continua comparando o digest resultante.
+- [x] **R10 / M02:** helper `load_index` compartilhado valida o wrapper e o blob do índice para ambos os consumidores. A verificação completa de manifests/configs/layers permanece em `verify`, antes da criação das visões.
+- [x] **R11 / M03:** validação de referência por digest compartilhada entre scan e promoção; referências iniciadas por hífen também são rejeitadas.
+- [x] **R12 / M01:** removido modo local de tar e seus testes sem consumidores. CLI atual oferece `oci` e `remote`; o build local do Makefile permanece disponível.
+- [x] **R13:** removida suíte repetida na matriz horária. Testes continuam no workflow dedicado em mudanças dos scripts/promoção, no PR e na main, além de dispatch manual.
+- [x] **Validação local:** 40 testes aprovados e actionlint aprovado nos cinco workflows do pipeline. O lint global ainda aponta `queue` não reconhecido e SC2016 no arquivo gerado preexistente `cve-triage.lock.yml`, fora desta alteração.
+- [ ] **R03 — validação remota:** comprovar retry parcial do publicador e reexecução completa no workflow autenticado; a nova convenção não recupera artifacts produzidos por versões antigas do workflow.
+
 **Pendências por melhoria**
 
 - [ ] **M01 — validação remota:** executar scans reais nas duas arquiteturas, confirmar bloqueio de publicação/promoção e auditar os relatórios em artifacts; comprovar vínculo com os manifests publicados junto com M02.

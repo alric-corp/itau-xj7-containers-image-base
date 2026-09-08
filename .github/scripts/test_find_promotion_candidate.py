@@ -30,6 +30,20 @@ class CandidateTests(unittest.TestCase):
     def test_empty_repository(self):
         self.assertIsNone(self.select([]))
 
+    def test_label_uses_chronology_then_numeric_run_and_attempt(self):
+        for tags, expected in (
+            (["310826-2300", "010926-0100"], "010926-0100"),
+            (["311225-2300", "010126-0100"], "010126-0100"),
+            (["010926-0100-r9-a9", "010926-0100-r10-a2", "010926-0100-r10-a10"],
+             "010926-0100-r10-a10"),
+        ):
+            candidate = image()
+            candidate["imageTags"] = tags
+            with self.subTest(tags=tags):
+                selected = self.select([candidate])
+                self.assertEqual(selected[1], expected)
+                self.assertEqual(selected[2], candidate["imageDigest"])
+
     def test_run_and_attempt_tags_are_accepted(self):
         self.assertIsNotNone(self.select([image(tag="080926-0000-r12345-a2")]))
         for tag in ("080926-0000-r0-a1", "080926-0000-r123-a0", "080926-0000-r123"):

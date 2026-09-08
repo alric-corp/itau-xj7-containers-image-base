@@ -82,11 +82,15 @@ jobs:
       - name: Download validated OCI artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: validated-oci-${{ matrix.framework }}-${{ github.run_attempt }}
+          name: validated-oci-${{ matrix.framework }}
           path: image.oci
 
       - name: Verify artifact integrity and platforms
-        run: python3 -B .github/scripts/oci_artifact.py verify image.oci
+        id: verified
+        run: |
+          set -eu
+          DIGEST=$(python3 -B .github/scripts/oci_artifact.py verify image.oci)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       # Referência da imagem: <registry-ecr>/image-base-<framework>, com uma
       # tag imutável <ddmmaa-hhmm> (GMT-3 / America/Sao_Paulo). A tag "stable"
@@ -107,9 +111,9 @@ jobs:
         id: publish
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          EXPECTED: ${{ steps.verified.outputs.digest }}
         run: |
           set -eu
-          EXPECTED=$(python3 -B .github/scripts/oci_artifact.py verify image.oci)
           mkdir -p "$RUNNER_TEMP/skopeo-auth"
           trap 'rm -f "$RUNNER_TEMP/skopeo-auth/config.json"' EXIT
           aws ecr get-login-password | docker run --rm -i \
