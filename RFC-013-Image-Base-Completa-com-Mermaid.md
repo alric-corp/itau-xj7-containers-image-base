@@ -158,6 +158,9 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 
 **Quarta entrega — integração OCI e gate M03, 08/09/2026**
 
+- [x] **Revalidação do gate M03 no CI:** [testes 34240181172](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34240181172) aprovados; [builds 34240181974](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34240181974) com onze frameworks aprovados e somente .NET 8 reprovado no scan. Publicação e promoção ignoradas no PR.
+- [x] **M01 — conferência de arquitetura na promoção:** scanner remoto agora exige a arquitetura esperada no JSON do Trivy e registra a arquitetura observada. Relatórios anteriores são removidos antes de cada scan, impedindo reutilização acidental. Suite local com 35 testes aprovados, incluindo arquitetura remota incorreta e scanner que não gera relatório novo. Execução desse complemento no job autenticado permanece pendente.
+
 - [x] **M01/M02 — OCI real no GitHub:** [run 34237737025](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34237737025) gerou os layouts e 24 relatórios com arquiteturas auditadas. Onze frameworks aprovados; .NET 8 bloqueado nas duas arquiteturas. Artifact Node.js baixado e verificado localmente.
 - [x] **M02 — artifact do CI no ECR de teste:** cópia de `validated-oci-nodejs24-1` para `image-base-validation-nodejs24:review-pr1-ci-oci` preservou o índice `sha256:b9074171f0fb0d2ff2d401beda4dcf41f58ebfe378fc23ada3b8d9ae3552c759`. Sem rebuild entre scan no CI e cópia manual autenticada.
 - [x] **Correção Melange:** [run 34236884288](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34236884288) falhou com `test-dirfs-0` ausente durante builds simultâneos. Execução sequencial por arquitetura corrigiu a falha no run seguinte; Makefile alinhado ao CI.

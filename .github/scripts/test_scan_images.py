@@ -13,6 +13,13 @@ from scan_images import scan_images
 REMOTE = "example.invalid/image-base-test@sha256:" + "a" * 64
 
 
+def successful_scanner(command, **kwargs):
+    arch = command[command.index("--platform") + 1].split("/")[1]
+    Path(command[command.index("--output") + 1]).write_text(
+        json.dumps({"Metadata": {"ImageConfig": {"architecture": arch}}}))
+    return subprocess.CompletedProcess(command, 0)
+
+
 class ScanTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -22,7 +29,7 @@ class ScanTests(unittest.TestCase):
         self.addCleanup(os.chdir, self.previous)
 
     def test_both_remote_platforms_use_the_same_digest(self):
-        with patch("scan_images.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
+        with patch("scan_images.subprocess.run", side_effect=successful_scanner) as run:
             self.assertEqual(scan_images("remote", REMOTE), 0)
         self.assertEqual(run.call_count, 2)
         for arch, call in zip(("amd64", "arm64"), run.call_args_list):
@@ -38,9 +45,13 @@ class ScanTests(unittest.TestCase):
 
     def test_failure_on_either_platform_blocks_release_and_still_scans_both(self):
         for codes in ((1, 0), (0, 1), (1, 1), (2, 0)):
+            results = iter(codes)
+            def scanner(command, **kwargs):
+                successful_scanner(command)
+                return subprocess.CompletedProcess(command, next(results))
             with self.subTest(codes=codes), patch(
                 "scan_images.subprocess.run",
-                side_effect=[subprocess.CompletedProcess([], code) for code in codes],
+                side_effect=scanner,
             ) as run:
                 self.assertEqual(scan_images("remote", REMOTE), 1)
                 self.assertEqual(run.call_count, 2)
@@ -67,6 +78,29 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(run.call_count, 2)
         evidence = json.loads(Path("reports/evidence-arm64.json").read_text())
         self.assertIn("esperado arm64", evidence["error"])
+
+    def test_remote_scan_rejects_wrong_architecture(self):
+        def wrong_scanner(command, **kwargs):
+            successful_scanner(command)
+            Path(command[command.index("--output") + 1]).write_text(
+                json.dumps({"Metadata": {"ImageConfig": {"architecture": "amd64"}}}))
+            return subprocess.CompletedProcess(command, 0)
+        with patch("scan_images.subprocess.run", side_effect=wrong_scanner) as run:
+            self.assertEqual(scan_images("remote", REMOTE), 1)
+            self.assertEqual(run.call_count, 2)
+        evidence = json.loads(Path("reports/evidence-arm64.json").read_text())
+        self.assertIn("esperado arm64", evidence["error"])
+
+    def test_remote_scan_cannot_reuse_stale_reports(self):
+        Path("reports").mkdir()
+        for arch in ("amd64", "arm64"):
+            Path(f"reports/trivy-{arch}.json").write_text(
+                json.dumps({"Metadata": {"ImageConfig": {"architecture": arch}}}))
+        with patch("scan_images.subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            self.assertEqual(scan_images("remote", REMOTE), 1)
+            self.assertEqual(run.call_count, 2)
+        for arch in ("amd64", "arm64"):
+            self.assertIn("error", json.loads(Path(f"reports/evidence-{arch}.json").read_text()))
 
     def test_local_scan_records_hash_of_each_archive(self):
         for arch in ("amd64", "arm64"):

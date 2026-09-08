@@ -46,12 +46,15 @@ def scan_images(mode: str, target: str, reports: Path = Path("reports")) -> int:
                 command += ["--input", view.name]
             else:
                 command += ["--image-src", "remote", target]
+            report_path = reports / f"trivy-{arch}.json"
+            report_path.unlink(missing_ok=True)
             result = subprocess.run(command, check=False)
             evidence["exit_code"] = result.returncode
             failed |= result.returncode != 0
-            if mode == "oci":
-                report = json.loads((reports / f"trivy-{arch}.json").read_text())
+            if mode in {"oci", "remote"}:
+                report = json.loads(report_path.read_text())
                 scanned_arch = report["Metadata"]["ImageConfig"]["architecture"]
+                evidence["scanned_architecture"] = scanned_arch
                 if scanned_arch != arch:
                     raise ValueError(f"scanner analisou {scanned_arch}, esperado {arch}")
         except (OSError, ValueError, KeyError) as error:
