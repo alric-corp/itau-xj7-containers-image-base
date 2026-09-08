@@ -1,0 +1,25 @@
+name: Diagnostic Callee 2 (promote-like)
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        type: string
+        required: true
+      aws-role-arn:
+        type: string
+        required: true
+      frameworks:
+        type: string
+        required: true
+      soak-hours:
+        type: number
+        default: 6
+jobs:
+  hi:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.frameworks) }}
+    steps:
+      - run: echo "promote framework=${{ matrix.framework }} soak=${{ inputs.soak-hours }}"
