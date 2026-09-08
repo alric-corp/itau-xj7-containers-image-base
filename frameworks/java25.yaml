@@ -20,6 +20,7 @@ paths:
     type: directory
     uid: 10000
     gid: 10000
+    permissions: 0o755
 
 environment:
   JAVA_HOME: /usr/lib/jvm/java-25-openjdk
