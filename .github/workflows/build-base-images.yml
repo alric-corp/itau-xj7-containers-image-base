@@ -14,6 +14,7 @@ on:
       frameworks:
         description: "JSON array de frameworks a buildar (deve casar com um arquivo em frameworks/<nome>.yaml)."
         type: string
+        required: true
 
 permissions:
   id-token: write           # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
@@ -22,62 +23,21 @@ permissions:
   artifact-metadata: write  # storage record da attestation (evita o warning "Failed to persist storage record")
 
 env:
-  # Tool versions/images centralizados aqui para não precisar caçar em cada passo.
-  #
-  # APKO_VERSION / MELANGE_VERSION são apenas informativos: o registro público
-  # da Chainguard só publica a tag ":latest" (tags com versão são recurso pago
-  # do Chainguard Images), então APKO_IMAGE/MELANGE_IMAGE abaixo sempre puxam
-  # o mais recente. Atualize esses dois comentários manualmente sempre que
-  # conferir `./apko version` / `melange version`.
-  APKO_VERSION: v1.2.19      # cgr.dev/chainguard/apko:latest em 2026-07-01
-  MELANGE_VERSION: v0.55.0   # cgr.dev/chainguard/melange:latest em 2026-07-01
+  # Fixação por digest e atualização controlada permanecem no item M09.
   APKO_IMAGE: cgr.dev/chainguard/apko:latest
-  MELANGE_IMAGE: cgr.dev/chainguard/melange:latest
-  TRIVY_VERSION: v0.72.0
 
 jobs:
-  # Builda o pacote melange/bundle-pem-test.yaml uma vez e compartilha com
-  # todos os builds de framework abaixo via artifact, evitando rebuild 4x.
-  # Usa chave de assinatura efêmera: só a chave pública viaja para o job
-  # build-push, o suficiente para o apko validar o repositório local.
-  melange-bundle:
-    name: Compile certs with melange
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
-
-      - name: Generate ephemeral melange signing key
-        working-directory: melange
-        run: |
-          docker run --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
-            keygen melange.rsa
-
-      - name: Build bundle-pem-test package (amd64 + arm64)
-        working-directory: melange
-        run: |
-          docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
-            build bundle-pem-test.yaml \
-            --arch x86_64,aarch64 \
-            --signing-key melange.rsa
-
-      - name: Upload melange repository
-        uses: actions/upload-artifact@v7
-        with:
-          name: melange-repo
-          path: |
-            melange/packages/
-            melange/melange.rsa.pub
-          retention-days: 1
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/validate-base-images.yml
+    with:
+      frameworks: ${{ inputs.frameworks }}
 
   build-push:
     name: Build & push ${{ matrix.framework }}
-    needs: melange-bundle
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: validate
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -145,42 +105,8 @@ jobs:
           echo "IMAGE_NAME=${REGISTRY}/image-base-${FRAMEWORK}" >> "$GITHUB_ENV"
           echo "TIMESTAMP_TAG=$(TZ='America/Sao_Paulo' date +%d%m%y-%H%M)" >> "$GITHUB_ENV"
 
-      # Build local-only (sem tocar em nenhum registry) para que a imagem
-      # possa ser escaneada antes de qualquer coisa ser publicada. Builds do
-      # apko são reprodutíveis, então o digest que o `apko publish` sobe
-      # depois é bit-a-bit idêntico ao que foi escaneado aqui.
-      - name: Build image for each architecture (local validation)
-        run: |
-          set -eu
-          declare -A ARCH_MAP=( [x86_64]=amd64 [aarch64]=arm64 )
-          for APKO_ARCH in x86_64 aarch64; do
-            OCI_ARCH="${ARCH_MAP[$APKO_ARCH]}"
-            echo "Building ${IMAGE_NAME} for ${APKO_ARCH}"
-            ./apko build \
-              --arch "$APKO_ARCH" \
-              --repository-append melange-repo/packages \
-              --keyring-append melange-repo/melange.rsa.pub \
-              "frameworks/${{ matrix.framework }}.yaml" "${IMAGE_NAME}" "${{ matrix.framework }}-${OCI_ARCH}.tar"
-            docker load < "${{ matrix.framework }}-${OCI_ARCH}.tar"
-          done
-
-      # Falha em qualquer severidade (CRITICAL/HIGH/MEDIUM/LOW) que já tenha
-      # correção disponível upstream. `ignore-unfixed` evita que uma CVE sem
-      # fix ainda publicado pelo Wolfi trave a publicação indefinidamente —
-      # sem isso, o rebuild diário (que existe justamente para aplicar
-      # patches) poderia travar por causa de algo que nem o upstream
-      # conseguiu corrigir ainda.
-      - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: "${{ env.IMAGE_NAME }}:latest-amd64"
-          format: table
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          ignore-unfixed: true
-          exit-code: "1"
-          version: ${{ env.TRIVY_VERSION }}
-
-      # Só chega aqui se o scan acima passou. Publica SÓ a tag imutável —
+      # M02 pendente: publish ainda reconstrói; não há comparação de digests.
+      # Só chega aqui se a validação de todos os frameworks passou. Publica SÓ a tag imutável —
       # "stable" não é tocada aqui, ela é promovida separadamente pelo
       # workflow promote-stable.yml depois da janela de soak.
       #
@@ -192,13 +118,15 @@ jobs:
       # separados).
       - name: Publish immutable image (multi-arch)
         id: publish
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
         run: |
           set -eu
           IMAGE_REF=$(./apko publish \
             --arch x86_64,aarch64 \
             --repository-append melange-repo/packages \
             --keyring-append melange-repo/melange.rsa.pub \
-            "frameworks/${{ matrix.framework }}.yaml" \
+            "frameworks/${FRAMEWORK}.yaml" \
             "${IMAGE_NAME}:${TIMESTAMP_TAG}" | tail -n1)
           echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
           echo "digest=${IMAGE_REF#*@}" >> "$GITHUB_OUTPUT"

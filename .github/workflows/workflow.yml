@@ -13,6 +13,8 @@ on:
       - 'melange/**'
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
+      - '.github/workflows/validate-base-images.yml'
+      - '.github/scripts/scan_images.py'
       - '.github/workflows/promote-stable.yml'
       - 'Makefile'
   pull_request:
@@ -22,11 +24,13 @@ on:
       - 'melange/**'
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
+      - '.github/workflows/validate-base-images.yml'
+      - '.github/scripts/scan_images.py'
       - '.github/workflows/promote-stable.yml'
       - 'Makefile'
   schedule:
     - cron: "0 3 * * *"   # build diário: 00:00 America/Sao_Paulo (03:00 UTC)
-    - cron: "0 9 * * *"   # promoção diária: 06:00 America/Sao_Paulo (09:00 UTC) — soak de ~6h após o build
+    - cron: "17 * * * *"  # promoção horária; soak mínimo contado desde o push
   workflow_dispatch:
     inputs:
       frameworks:
@@ -34,20 +38,24 @@ on:
         type: string
         default: '["go1-26"]'
 
-# Reusable workflows chamados abaixo (build-base-images.yml, promote-stable.yml)
-# pedem id-token/attestations write — a permissão efetiva de um workflow_call
-# fica limitada ao que o CALLER concede aqui, então precisa espelhar (ou ser
-# superset do que cada um pede, senão o run falha com "startup_failure"
-# antes mesmo de criar jobs.
+# PRs recebem apenas leitura. Escrita/OIDC são concedidos nos jobs autorizados.
 permissions:
-  id-token: write
   contents: read
-  attestations: write
-  artifact-metadata: write
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/validate-base-images.yml
+    with:
+      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'
+
   build-base-images:
-    if: github.event.schedule != '0 9 * * *'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *')
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     uses: ./.github/workflows/build-base-images.yml
     with:
       aws-region: ${{ vars.AWS_REGION }}
@@ -55,7 +63,10 @@ jobs:
       frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]' }}
 
   promote-stable:
-    if: github.event.schedule == '0 9 * * *'
+    if: github.ref == 'refs/heads/main' && github.event.schedule == '17 * * * *'
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/promote-stable.yml
     with:
       aws-region: ${{ vars.AWS_REGION }}

@@ -1,0 +1,26 @@
+name: Test image pipeline scripts
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/test-promotion.yml'
+      - '.github/workflows/promote-stable.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/**'
+      - '.github/workflows/test-promotion.yml'
+      - '.github/workflows/promote-stable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Test image pipeline scripts
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v

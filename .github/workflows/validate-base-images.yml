@@ -1,0 +1,121 @@
+name: Validate base images (reusable, no AWS)
+
+on:
+  workflow_call:
+    inputs:
+      frameworks:
+        description: "JSON array de frameworks a validar."
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  # Fixação por digest e atualização controlada permanecem no item M09.
+  APKO_IMAGE: cgr.dev/chainguard/apko:latest
+  MELANGE_IMAGE: cgr.dev/chainguard/melange:latest
+  TRIVY_VERSION: v0.72.0
+
+jobs:
+  melange-bundle:
+    name: Compile certs with melange
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Generate ephemeral melange signing key
+        working-directory: melange
+        run: |
+          docker run --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
+            keygen melange.rsa
+
+      - name: Build bundle-pem-test package (amd64 + arm64)
+        working-directory: melange
+        run: |
+          docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
+            build bundle-pem-test.yaml \
+            --arch x86_64,aarch64 \
+            --signing-key melange.rsa
+
+      - name: Upload melange repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: melange-repo
+          path: |
+            melange/packages/
+            melange/melange.rsa.pub
+          retention-days: 1
+
+  validate:
+    name: Validate ${{ matrix.framework }}
+    needs: melange-bundle
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.frameworks) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install apko (latest stable)
+        run: |
+          set -eu
+          docker create --name apko-extract "$APKO_IMAGE"
+          docker cp apko-extract:/usr/bin/apko ./apko
+          docker rm apko-extract
+          chmod +x ./apko
+          ./apko version
+
+      - name: Download melange repository
+        uses: actions/download-artifact@v8
+        with:
+          name: melange-repo
+          path: melange-repo
+
+      - name: Set local image name
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: echo "IMAGE_NAME=localhost/image-base-${FRAMEWORK}" >> "$GITHUB_ENV"
+
+      - name: Build image for each architecture (local validation)
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: |
+          set -eu
+          declare -A ARCH_MAP=( [x86_64]=amd64 [aarch64]=arm64 )
+          for APKO_ARCH in x86_64 aarch64; do
+            OCI_ARCH="${ARCH_MAP[$APKO_ARCH]}"
+            echo "Building ${IMAGE_NAME} for ${APKO_ARCH}"
+            ./apko build \
+              --arch "$APKO_ARCH" \
+              --repository-append melange-repo/packages \
+              --keyring-append melange-repo/melange.rsa.pub \
+              "frameworks/${FRAMEWORK}.yaml" "${IMAGE_NAME}" "${FRAMEWORK}-${OCI_ARCH}.tar"
+          done
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Scan both architectures
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: python3 -B .github/scripts/scan_images.py local "$FRAMEWORK"
+
+      - name: Preserve scan evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-scans-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn

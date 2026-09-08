@@ -52,7 +52,12 @@ env:
 jobs:
   promote:
     name: Promote ${{ matrix.framework }}
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     runs-on: ubuntu-latest
+    # Mesmo grupo em dispatch direto e workflow_call: seleção e push serializados.
+    concurrency:
+      group: promote-stable-${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}-${{ inputs.aws-region || vars.AWS_REGION }}-${{ matrix.framework }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +65,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Test promotion candidate selection
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 
       # inputs.aws-region/aws-role-arn só existem no workflow_call (o path de
       # produção, chamado por workflow.yml); no workflow_dispatch direto
@@ -93,16 +101,26 @@ jobs:
       # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
       # relação ao momento do build original — é aqui que uma CVE divulgada
       # durante a janela de soak barra a promoção.
-      - name: Re-scan candidate before promotion
+      - name: Install Trivy
         if: steps.candidate.outputs.skip != 'true'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
-          image-ref: "${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}"
-          format: table
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          ignore-unfixed: true
-          exit-code: "1"
           version: ${{ env.TRIVY_VERSION }}
+
+      - name: Re-scan both architectures before promotion
+        if: steps.candidate.outputs.skip != 'true'
+        env:
+          IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
+        run: python3 -B .github/scripts/scan_images.py remote "$IMAGE_REF"
+
+      - name: Preserve promotion scan evidence
+        if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: promotion-scans-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
 
       # docker buildx imagetools create retagueia o índice multi-arch por
       # referência (sem baixar/re-subir camadas), preservando o manifest
