@@ -183,22 +183,24 @@ jobs:
       # "stable" não é tocada aqui, ela é promovida separadamente pelo
       # workflow promote-stable.yml depois da janela de soak.
       #
-      # apko publish escreve o digest da imagem publicada na última linha do
-      # stdout — capturamos aqui para assinar/atestar exatamente esse digest
-      # (não a tag, que é mutável) nos passos seguintes. Confirme esse
-      # comportamento no primeiro run real (`./apko publish --help` /
-      # changelog da versão em uso) antes de confiar cegamente no parsing.
+      # apko publish escreve a referência completa da imagem publicada
+      # (registro/repo@sha256:...) na última linha do stdout — não só o
+      # digest sozinho (confirmado num run real). Guardamos os dois: a
+      # referência completa (pra cosign) e só o digest depois do "@" (pra
+      # attest-build-provenance, que quer subject-name e subject-digest
+      # separados).
       - name: Publish immutable image (multi-arch)
         id: publish
         run: |
           set -eu
-          DIGEST=$(./apko publish \
+          IMAGE_REF=$(./apko publish \
             --arch x86_64,aarch64 \
             --repository-append melange-repo/packages \
             --keyring-append melange-repo/melange.rsa.pub \
             "frameworks/${{ matrix.framework }}.yaml" \
             "${IMAGE_NAME}:${TIMESTAMP_TAG}" | tail -n1)
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+          echo "digest=${IMAGE_REF#*@}" >> "$GITHUB_OUTPUT"
 
       # Verificabilidade (padrão hardened, ver RFC-013 Fase 3): assina o
       # digest publicado com cosign keyless — usa o mesmo token OIDC do job
@@ -212,11 +214,10 @@ jobs:
 
       - name: Sign published image (keyless)
         env:
-          IMAGE: ${{ env.IMAGE_NAME }}
-          DIGEST: ${{ steps.publish.outputs.digest }}
+          IMAGE_REF: ${{ steps.publish.outputs.image_ref }}
         run: |
           set -eu
-          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign sign --yes "${IMAGE_REF}"
 
       # Build provenance (SLSA) nativo do GitHub Actions: registra como,
       # onde (este workflow/run) e a partir de qual commit a imagem foi
