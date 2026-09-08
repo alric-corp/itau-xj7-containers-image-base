@@ -2,21 +2,6 @@ name: Diagnostic Test
 on:
   workflow_dispatch:
 
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
-  hello:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Print OIDC token claims
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-            const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-            console.log('aud:', payload.aud);
-            console.log('sub:', payload.sub);
-            console.log('repository:', payload.repository);
-            console.log('repository_owner:', payload.repository_owner);
+  call-it:
+    uses: ./.github/workflows/_diag-callee.yml
