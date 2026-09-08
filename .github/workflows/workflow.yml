@@ -21,13 +21,17 @@ on:
 # Reusable workflows chamados abaixo (build-base-images.yml, promote-stable.yml)
 # pedem id-token/attestations write — a permissão efetiva de um workflow_call
 # fica limitada ao que o CALLER concede aqui, então precisa espelhar (ou ser
-# superset d)o que cada um pede, senão o run falha com "startup_failure"
+# superset do que cada um pede, senão o run falha com "startup_failure"
 # antes mesmo de criar jobs.
 permissions:
   id-token: write
   contents: read
   attestations: write
 
+# TODO: restaurar a lista completa de frameworks (os 12) nos dois `with:`
+# abaixo assim que o teste real com go1-26 fechar de ponta a ponta (build +
+# assinatura + attestation no ECR). Reduzido de propósito enquanto iteramos
+# no fix do pipeline, pra não disparar os 12 builds em paralelo a cada push.
 jobs:
   build-base-images:
     if: github.event.schedule != '0 9 * * *'
@@ -35,7 +39,7 @@ jobs:
     with:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
-      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]' }}
+      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["go1-26"]' }}
 
   promote-stable:
     if: github.event.schedule == '0 9 * * *'
@@ -44,4 +48,4 @@ jobs:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
       soak-hours: 6
-      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'
+      frameworks: '["go1-26"]'
