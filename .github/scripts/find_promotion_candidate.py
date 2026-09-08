@@ -10,10 +10,10 @@ Uso:
 --output json`. Escreve o resultado no arquivo apontado por $GITHUB_OUTPUT
 (skip, tag, digest, image).
 """
+import datetime
 import json
 import os
 import sys
-import time
 
 
 def emit(key: str, value: str) -> None:
@@ -28,7 +28,12 @@ def main() -> None:
     with open(images_path) as f:
         details = json.load(f)["imageDetails"]
 
-    cutoff = time.time() - soak_hours * 3600
+    # `aws ecr describe-images --output json` serializa imagePushedAt como
+    # string ISO 8601 (ex.: "2026-09-07T22:57:53.682000-03:00"), não como
+    # epoch numérico — fromisoformat entende esse formato (com offset e
+    # microssegundos) diretamente.
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff = now - datetime.timedelta(hours=soak_hours)
 
     # Builds imutáveis (qualquer tag != "stable"), mais recente primeiro.
     candidates = []
@@ -37,7 +42,8 @@ def main() -> None:
         immutable_tags = [t for t in tags if t != "stable"]
         if not immutable_tags:
             continue
-        candidates.append((img["imagePushedAt"], immutable_tags[0], img["imageDigest"]))
+        pushed_at = datetime.datetime.fromisoformat(img["imagePushedAt"])
+        candidates.append((pushed_at, immutable_tags[0], img["imageDigest"]))
     candidates.sort(key=lambda c: c[0], reverse=True)
 
     if not candidates:
@@ -47,7 +53,8 @@ def main() -> None:
 
     pushed_at, tag, digest = candidates[0]
     if pushed_at > cutoff:
-        remaining_h = (pushed_at - cutoff) / 3600
+        remaining = pushed_at - cutoff
+        remaining_h = remaining.total_seconds() / 3600
         print(f"{repo}: build {tag} ainda dentro da janela de soak (~{remaining_h:.1f}h restantes)")
         emit("skip", "true")
         return
