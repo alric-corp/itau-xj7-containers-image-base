@@ -1,0 +1,230 @@
+name: Build & Push Base Images (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: "Região AWS do ECR (ex.: us-east-1)"
+        type: string
+        required: true
+      aws-role-arn:
+        description: "Role assumida via OIDC com permissão de push no ECR"
+        type: string
+        required: true
+      frameworks:
+        description: "JSON array de frameworks a buildar (deve casar com um arquivo em frameworks/<nome>.yaml)."
+        type: string
+
+permissions:
+  id-token: write      # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
+  contents: read
+  attestations: write  # obrigatório para actions/attest-build-provenance
+
+env:
+  # Tool versions/images centralizados aqui para não precisar caçar em cada passo.
+  #
+  # APKO_VERSION / MELANGE_VERSION são apenas informativos: o registro público
+  # da Chainguard só publica a tag ":latest" (tags com versão são recurso pago
+  # do Chainguard Images), então APKO_IMAGE/MELANGE_IMAGE abaixo sempre puxam
+  # o mais recente. Atualize esses dois comentários manualmente sempre que
+  # conferir `./apko version` / `melange version`.
+  APKO_VERSION: v1.2.19      # cgr.dev/chainguard/apko:latest em 2026-07-01
+  MELANGE_VERSION: v0.55.0   # cgr.dev/chainguard/melange:latest em 2026-07-01
+  APKO_IMAGE: cgr.dev/chainguard/apko:latest
+  MELANGE_IMAGE: cgr.dev/chainguard/melange:latest
+  TRIVY_VERSION: v0.72.0
+
+jobs:
+  # Builda o pacote melange/bundle-pem-test.yaml uma vez e compartilha com
+  # todos os builds de framework abaixo via artifact, evitando rebuild 4x.
+  # Usa chave de assinatura efêmera: só a chave pública viaja para o job
+  # build-push, o suficiente para o apko validar o repositório local.
+  melange-bundle:
+    name: Compile certs with melange
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Generate ephemeral melange signing key
+        working-directory: melange
+        run: |
+          docker run --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
+            keygen melange.rsa
+
+      - name: Build bundle-pem-test package (amd64 + arm64)
+        working-directory: melange
+        run: |
+          docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
+            build bundle-pem-test.yaml \
+            --arch x86_64,aarch64 \
+            --signing-key melange.rsa
+
+      - name: Upload melange repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: melange-repo
+          path: |
+            melange/packages/
+            melange/melange.rsa.pub
+          retention-days: 1
+
+  build-push:
+    name: Build & push ${{ matrix.framework }}
+    needs: melange-bundle
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.frameworks) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ECR não cria repositório automaticamente no primeiro push (diferente
+      # do Docker Hub) — garante que ele existe antes do apko publicar.
+      - name: Ensure ECR repository exists
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: |
+          set -eu
+          REPO="image-base-${FRAMEWORK}"
+          aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "$REPO" \
+              --image-tag-mutability MUTABLE \
+              --image-scanning-configuration scanOnPush=true >/dev/null
+
+      # apko é extraído como binário nativo (em vez de rodar via `docker run`)
+      # para reaproveitar as credenciais que o passo de login no ECR já
+      # escreveu em ~/.docker/config.json, sem precisar montar volume para
+      # simular o $HOME de um container. APKO_IMAGE (":latest" por padrão,
+      # ver env do workflow) mantém sempre a última versão estável do apko.
+      - name: Install apko (latest stable)
+        run: |
+          set -eu
+          docker create --name apko-extract "$APKO_IMAGE"
+          docker cp apko-extract:/usr/bin/apko ./apko
+          docker rm apko-extract
+          chmod +x ./apko
+          ./apko version
+
+      - name: Download melange repository
+        uses: actions/download-artifact@v8
+        with:
+          name: melange-repo
+          path: melange-repo
+
+      # Referência da imagem: <registry-ecr>/image-base-<framework>, com uma
+      # tag imutável <ddmmaa-hhmm> (GMT-3 / America/Sao_Paulo). A tag "stable"
+      # NÃO é publicada aqui — ela só é promovida pelo workflow
+      # promote-stable.yml, depois de uma janela de soak sem novas CVEs
+      # (ver "Gate de promoção" no README).
+      - name: Set image name and tags
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -eu
+          echo "IMAGE_NAME=${REGISTRY}/image-base-${FRAMEWORK}" >> "$GITHUB_ENV"
+          echo "TIMESTAMP_TAG=$(TZ='America/Sao_Paulo' date +%d%m%y-%H%M)" >> "$GITHUB_ENV"
+
+      # Build local-only (sem tocar em nenhum registry) para que a imagem
+      # possa ser escaneada antes de qualquer coisa ser publicada. Builds do
+      # apko são reprodutíveis, então o digest que o `apko publish` sobe
+      # depois é bit-a-bit idêntico ao que foi escaneado aqui.
+      - name: Build image for each architecture (local validation)
+        run: |
+          set -eu
+          declare -A ARCH_MAP=( [x86_64]=amd64 [aarch64]=arm64 )
+          for APKO_ARCH in x86_64 aarch64; do
+            OCI_ARCH="${ARCH_MAP[$APKO_ARCH]}"
+            echo "Building ${IMAGE_NAME} for ${APKO_ARCH}"
+            ./apko build \
+              --arch "$APKO_ARCH" \
+              --repository-append melange-repo/packages \
+              --keyring-append melange-repo/melange.rsa.pub \
+              "frameworks/${{ matrix.framework }}.yaml" "${IMAGE_NAME}" "${{ matrix.framework }}-${OCI_ARCH}.tar"
+            docker load < "${{ matrix.framework }}-${OCI_ARCH}.tar"
+          done
+
+      # Falha em qualquer severidade (CRITICAL/HIGH/MEDIUM/LOW) que já tenha
+      # correção disponível upstream. `ignore-unfixed` evita que uma CVE sem
+      # fix ainda publicado pelo Wolfi trave a publicação indefinidamente —
+      # sem isso, o rebuild diário (que existe justamente para aplicar
+      # patches) poderia travar por causa de algo que nem o upstream
+      # conseguiu corrigir ainda.
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "${{ env.IMAGE_NAME }}:latest-amd64"
+          format: table
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          ignore-unfixed: true
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+      # Só chega aqui se o scan acima passou. Publica SÓ a tag imutável —
+      # "stable" não é tocada aqui, ela é promovida separadamente pelo
+      # workflow promote-stable.yml depois da janela de soak.
+      #
+      # apko publish escreve o digest da imagem publicada na última linha do
+      # stdout — capturamos aqui para assinar/atestar exatamente esse digest
+      # (não a tag, que é mutável) nos passos seguintes. Confirme esse
+      # comportamento no primeiro run real (`./apko publish --help` /
+      # changelog da versão em uso) antes de confiar cegamente no parsing.
+      - name: Publish immutable image (multi-arch)
+        id: publish
+        run: |
+          set -eu
+          DIGEST=$(./apko publish \
+            --arch x86_64,aarch64 \
+            --repository-append melange-repo/packages \
+            --keyring-append melange-repo/melange.rsa.pub \
+            "frameworks/${{ matrix.framework }}.yaml" \
+            "${IMAGE_NAME}:${TIMESTAMP_TAG}" | tail -n1)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # Verificabilidade (padrão hardened, ver RFC-013 Fase 3): assina o
+      # digest publicado com cosign keyless — usa o mesmo token OIDC do job
+      # (audience Sigstore/Fulcio, não o da AWS), sem chave privada pra
+      # gerenciar. A assinatura fica registrada no transparency log público
+      # do Rekor e anexada ao próprio repositório ECR como um artefato OCI
+      # adicional (tag "sha256-<digest>.sig" se o ECR ainda não suportar a
+      # OCI Referrers API nesta região).
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign published image (keyless)
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          set -eu
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      # Build provenance (SLSA) nativo do GitHub Actions: registra como,
+      # onde (este workflow/run) e a partir de qual commit a imagem foi
+      # construída. Fica disponível via `gh attestation verify` e, com
+      # push-to-registry, também como artefato anexado no ECR.
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true

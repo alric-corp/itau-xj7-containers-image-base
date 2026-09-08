@@ -1,0 +1,26 @@
+include: distroless/image-base.yaml
+contents:
+  packages:
+    - openjdk-25
+
+work-dir: /app
+
+accounts:
+  groups:
+    - groupname: spring
+      gid: 10000
+  users:
+    - username: spring
+      uid: 10000
+      gid: 10000
+  run-as: spring
+
+paths:
+  - path: /app
+    type: directory
+    uid: 10000
+    gid: 10000
+
+environment:
+  JAVA_HOME: /usr/lib/jvm/java-25-openjdk
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-25-openjdk/bin

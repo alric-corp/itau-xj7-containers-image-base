@@ -1,0 +1,37 @@
+name: Build & Push Multi-Arch Distroless Image
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  schedule:
+    - cron: "0 3 * * *"   # build diário: 00:00 America/Sao_Paulo (03:00 UTC)
+    - cron: "0 9 * * *"   # promoção diária: 06:00 America/Sao_Paulo (09:00 UTC) — soak de ~6h após o build
+  workflow_dispatch:
+    inputs:
+      frameworks:
+        description: 'JSON array de frameworks para build manual (ex.: ["go1-26"])'
+        type: string
+        default: '["go1-26"]'
+
+jobs:
+  build-base-images:
+    if: github.event.schedule != '0 9 * * *'
+    uses: ./.github/workflows/build-base-images.yml
+    with:
+      aws-region: ${{ vars.AWS_REGION }}
+      aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
+      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]' }}
+
+  promote-stable:
+    if: github.event.schedule == '0 9 * * *'
+    uses: ./.github/workflows/promote-stable.yml
+    with:
+      aws-region: ${{ vars.AWS_REGION }}
+      aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
+      soak-hours: 6
+      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'

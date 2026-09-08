@@ -1,0 +1,16 @@
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  # wolfi-base NÃO entra aqui de propósito: ele depende de apk-tools + busybox,
+  # o que dá shell e gerenciador de pacotes em toda imagem "distroless" que
+  # inclui este arquivo. wolfi-baselayout já vem transitivamente via
+  # ca-certificates-bundle, então não falta nada essencial sem wolfi-base.
+  packages:
+    - ca-certificates-bundle
+    - bundle-pem-test
+
+archs:
+  - amd64
+  - arm64

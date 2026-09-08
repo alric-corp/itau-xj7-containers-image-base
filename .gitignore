@@ -1,0 +1,13 @@
+.DS_Store
+
+# melange local signing key + build output (regenerated on every build)
+melange/.local-keys/
+melange/packages/
+melange/melange-cache/
+*.rsa
+*.rsa.pub
+
+# apko/docker build artifacts
+*.tar
+sbom-*.json
+*.spdx.json

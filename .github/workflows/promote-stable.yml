@@ -1,0 +1,104 @@
+name: Promote images to stable (canary soak check)
+
+# Gate de promoção da tag "stable": em vez de mover "stable" no mesmo run
+# que publica a imagem, este workflow roda depois de uma janela de soak
+# (default 6h) e só promove um build imutável se, decorrida essa janela,
+# um re-scan Trivy continuar limpo. Isso cobre o cenário em que uma CVE é
+# divulgada horas depois do build original (comum num repositório
+# rolling-release como o Wolfi) — "stable" só avança se o build sobreviver
+# ao soak sem nenhuma vulnerabilidade nova conhecida.
+#
+# Não é um canário de tráfego real (não há apps consumidoras na POC pra
+# validar contra) — é um canário de tempo/CVE. Validar contra consumidores
+# reais é responsabilidade de cada pipeline de deploy downstream.
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        type: string
+        required: true
+      aws-role-arn:
+        type: string
+        required: true
+      frameworks:
+        description: "JSON array de frameworks a avaliar para promoção."
+        type: string
+        required: true
+      soak-hours:
+        description: "Horas mínimas que um build imutável precisa esperar antes de poder virar stable."
+        type: number
+        default: 6
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TRIVY_VERSION: v0.72.0
+
+jobs:
+  promote:
+    name: Promote ${{ matrix.framework }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(inputs.frameworks) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: List images in repository
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: |
+          set -eu
+          aws ecr describe-images --repository-name "image-base-${FRAMEWORK}" --output json > images.json
+
+      - name: Find promotion candidate (soak window)
+        id: candidate
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          python3 .github/scripts/find_promotion_candidate.py \
+            images.json "${{ inputs.soak-hours }}" "$REGISTRY" "image-base-${FRAMEWORK}"
+
+      # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
+      # relação ao momento do build original — é aqui que uma CVE divulgada
+      # durante a janela de soak barra a promoção.
+      - name: Re-scan candidate before promotion
+        if: steps.candidate.outputs.skip != 'true'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}"
+          format: table
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          ignore-unfixed: true
+          exit-code: "1"
+          version: ${{ env.TRIVY_VERSION }}
+
+      # docker buildx imagetools create retagueia o índice multi-arch por
+      # referência (sem baixar/re-subir camadas), preservando o manifest
+      # list amd64+arm64 tal como foi publicado.
+      - name: Promote to stable
+        if: steps.candidate.outputs.skip != 'true'
+        env:
+          IMAGE: ${{ steps.candidate.outputs.image }}
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          set -eu
+          docker buildx imagetools create --tag "${IMAGE}:stable" "${IMAGE}@${DIGEST}"
+          echo "promovido ${IMAGE}:${TAG} -> ${IMAGE}:stable"
