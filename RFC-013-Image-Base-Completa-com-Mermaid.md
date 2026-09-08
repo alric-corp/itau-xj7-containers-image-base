@@ -156,11 +156,22 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 - [ ] **M05 — corrigir IAM:** inspeção real identificou trust policy com wildcard de repositório/ref; restringir ao repositório e branch autorizados. A política remota ainda não foi alterada.
 - [ ] Validar a versão com layout OCI no GitHub e executar o fluxo autenticado completo, incluindo assinatura/provenance, antes do merge/liberação.
 
+**Quarta entrega — integração OCI e gate M03, 08/09/2026**
+
+- [x] **M01/M02 — OCI real no GitHub:** [run 34237737025](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34237737025) gerou os layouts e 24 relatórios com arquiteturas auditadas. Onze frameworks aprovados; .NET 8 bloqueado nas duas arquiteturas. Artifact Node.js baixado e verificado localmente.
+- [x] **M02 — artifact do CI no ECR de teste:** cópia de `validated-oci-nodejs24-1` para `image-base-validation-nodejs24:review-pr1-ci-oci` preservou o índice `sha256:b9074171f0fb0d2ff2d401beda4dcf41f58ebfe378fc23ada3b8d9ae3552c759`. Sem rebuild entre scan no CI e cópia manual autenticada.
+- [x] **Correção Melange:** [run 34236884288](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34236884288) falhou com `test-dirfs-0` ausente durante builds simultâneos. Execução sequencial por arquitetura corrigiu a falha no run seguinte; Makefile alinhado ao CI.
+- [x] **M03 — gate implementado:** promoção exige índice com exatamente amd64/arm64, assinatura cosign com identidade exata do workflow de build na main e provenance GitHub com signer workflow e source ref restritos. Falha ou ausência de evidências impede a promoção.
+- [x] **M03 — verificação real positiva:** o gate aceitou o digest de consumo já existente `sha256:fa3ea99fe683e4c3f43b40b0fbf9e343eda356676ff1e8369e997acfb50cf755`, verificando duas assinaturas e uma attestation. Somente leitura; nenhuma tag de consumo alterada.
+- [x] **M03 — verificação real negativa:** o gate rejeitou o artifact não assinado do repositório de teste com `no signatures found` (exit code 10 do cosign).
+- [x] **Testes locais:** 33 testes aprovados, incluindo rejeição de arquitetura incorreta no relatório, corrupção de blobs, ausência de plataforma e falhas dos verificadores.
+- [ ] Executar a promoção autenticada pelo workflow após integração autorizada na main; os testes positivos/negativos acima foram executados manualmente contra o ECR.
+
 **Pendências por melhoria**
 
 - [ ] **M01 — validação remota:** executar scans reais nas duas arquiteturas, confirmar bloqueio de publicação/promoção e auditar os relatórios em artifacts; comprovar vínculo com os manifests publicados junto com M02.
 - [ ] **M02 — integração final:** validar no workflow autenticado a cópia OCI já implementada e comprovada manualmente no ECR, incluindo obtenção do artifact do run/tentativa e falhas por adulteração.
-- [ ] **M03 — restante:** inspecionar plataformas do índice e verificar assinatura, identidade autorizada e provenance; testar rejeição de imagens sem essas evidências.
+- [ ] **M03 — integração final:** confirmar o gate já implementado/testado no job autenticado de promoção, com permissões efetivas do GitHub Actions.
 - [ ] **M04 — validação remota:** confirmar execução horária e ausência de regressão com execuções concorrentes no GitHub/ECR; medir atrasos de fila e scheduler.
 - [ ] **M05 — validação remota:** executar PRs internos/de forks e publicação na `main`; verificar permissões efetivas e trust policy OIDC na conta AWS.
 - [ ] **M06 — integração final:** confirmar compatibilidade com assinaturas/provenance e aplicar/validar a configuração dos repositórios de consumo pelo workflow autorizado.
@@ -177,6 +188,7 @@ Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registra
 | 08/09/2026 | Primeira implementação: M03/M04 parciais, testes de regressão, input obrigatório e ajuste documental de M11 | [Seletor](.github/scripts/find_promotion_candidate.py), [14 testes](.github/scripts/test_find_promotion_candidate.py) e [workflow de testes](.github/workflows/test-promotion.yml). Execução local: 14 testes aprovados; `actionlint` aprovado nos quatro workflows da entrega; `git diff --check` sem erros. | Alterações locais, sem commit/PR/run remoto registrado. Validação GitHub/ECR pendente; M03/M04/M11 continuam parciais. |
 | 08/09/2026 | Segunda implementação: M01/M05 parciais e configuração de agendamento/concorrência de M04 | [Validação sem AWS](.github/workflows/validate-base-images.yml), [scanner](.github/scripts/scan_images.py), [testes do scanner](.github/scripts/test_scan_images.py) e [promoção](.github/workflows/promote-stable.yml). Execução local: 21 testes aprovados, oito cenários de roteamento verificados e `actionlint` aprovado nos cinco workflows da entrega. | Scanner simulado nos testes; sem builds/scans reais ou execução no GitHub/ECR nesta entrega. A publicação depende do sucesso de todo o lote selecionado. M02 permanece aberto: `apko publish` ainda reconstrói a imagem. |
 | 08/09/2026 | Terceira entrega: PR real, cópia OCI, tags imutáveis e ferramentas fixadas | [PR #1](https://github.com/alric-corp/itau-xj7-containers-image-base/pull/1), runs referenciados acima e teste no ECR exclusivo `image-base-validation-nodejs24`, digest registrado no checklist. | PR em rascunho; sem merge. .NET 8 permanece bloqueado por CVEs. O teste ECR foi manual e não valida OIDC/assinatura do workflow. M03, M07, M08, M10 e demais validações remotas permanecem pendentes. |
+| 08/09/2026 | Quarta entrega: validação OCI no GitHub, cópia do artifact do CI no ECR e gate M03 | Run 34237737025, digests e testes positivos/negativos registrados acima; 33 testes locais aprovados. | Sem merge nem alteração de tags de consumo. Promoção pelo workflow, IAM, runtimes mínimos, testes funcionais/TLS e fonte corporativa de certificados continuam pendentes. |
 
 Comando para repetir os testes locais, sem Docker ou AWS:
 

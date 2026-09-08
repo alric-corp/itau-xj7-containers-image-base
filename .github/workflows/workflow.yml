@@ -67,6 +67,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: read
     uses: ./.github/workflows/promote-stable.yml
     with:
       aws-region: ${{ vars.AWS_REGION }}
