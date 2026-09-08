@@ -39,10 +39,13 @@ jobs:
       - name: Build bundle-pem-test package (amd64 + arm64)
         working-directory: melange
         run: |
-          docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
-            build bundle-pem-test.yaml \
-            --arch x86_64,aarch64 \
-            --signing-key melange.rsa
+          set -eu
+          # Cada processo usa uma arquitetura para evitar corrida no workspace
+          # compartilhado (test-dirfs-0 ausente observado no runner real).
+          for ARCH in x86_64 aarch64; do
+            docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
+              build bundle-pem-test.yaml --arch "$ARCH" --signing-key melange.rsa
+          done
 
       - name: Upload melange repository
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
