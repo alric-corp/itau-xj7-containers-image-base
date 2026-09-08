@@ -18,6 +18,16 @@ on:
         type: string
         default: '["go1-26"]'
 
+# Reusable workflows chamados abaixo (build-base-images.yml, promote-stable.yml)
+# pedem id-token/attestations write — a permissão efetiva de um workflow_call
+# fica limitada ao que o CALLER concede aqui, então precisa espelhar (ou ser
+# superset d)o que cada um pede, senão o run falha com "startup_failure"
+# antes mesmo de criar jobs.
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+
 jobs:
   build-base-images:
     if: github.event.schedule != '0 9 * * *'
