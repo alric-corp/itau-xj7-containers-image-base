@@ -47,7 +47,7 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/validate-base-images.yml
     with:
-      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'
+      frameworks: '["java21", "java21-dev", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "go1-26-dev", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10", "dotnet10-dev"]'
 
   build-base-images:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *')
@@ -60,7 +60,7 @@ jobs:
     with:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
-      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]' }}
+      frameworks: ${{ github.event_name == 'workflow_dispatch' && inputs.frameworks || '["java21", "java21-dev", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "go1-26-dev", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10", "dotnet10-dev"]' }}
 
   promote-stable:
     if: github.ref == 'refs/heads/main' && github.event.schedule == '17 * * * *'
@@ -73,4 +73,4 @@ jobs:
       aws-region: ${{ vars.AWS_REGION }}
       aws-role-arn: ${{ vars.AWS_ROLE_ARN }}
       soak-hours: 6
-      frameworks: '["java21", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10"]'
+      frameworks: '["java21", "java21-dev", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "go1-26-dev", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10", "dotnet10-dev"]'

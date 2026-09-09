@@ -1,7 +1,11 @@
+# Variante "run": runtime ASP.NET Core (aspnet-10-runtime), sem o SDK —
+# sem `dotnet build`/`dotnet publish`/compilador. Publique em
+# dotnet10-dev.yaml (estágio de build) e copie a saída de
+# `dotnet publish` para esta imagem no estágio final.
 include: distroless/image-base.yaml
 contents:
   packages:
-    - dotnet-10-sdk
+    - aspnet-10-runtime
 
 work-dir: /app
 

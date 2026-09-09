@@ -41,18 +41,23 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 
 | Linguagem | Versão | Pacote(s) Wolfi | Imagem (repositório ECR) | Usuário | Uso |
 |---|---|---|---|---|---|
-| Java | 21 (LTS) | `openjdk-21` | `image-base-java21` | `spring` | runtime final |
-| Java | 25 (LTS) | `openjdk-25` | `image-base-java25` | `spring` | runtime final |
+| Java | 21 (LTS) | `openjdk-21-jre` | `image-base-java21` | `spring` | runtime final (sem `javac`/jmods/shell) |
+| Java | 21 (LTS) | `openjdk-21`, `busybox` | `image-base-java21-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
+| Java | 25 (LTS) | `openjdk-25` | `image-base-java25` | `spring` | runtime final (JDK completo — ainda não separado, ver M07) |
 | Python | 3.13 | `python-3.13` | `image-base-python3-13` | `appuser` | runtime final |
 | Python | 3.14 | `python-3.14` | `image-base-python3-14` | `appuser` | runtime final |
-| Go | 1.25 | `go-1.25` | `image-base-go1-25` | `appuser` | runtime final |
-| Go | 1.26 | `go-1.26` | `image-base-go1-26` | `appuser` | runtime final |
+| Go | 1.25 | `go-1.25` | `image-base-go1-25` | `appuser` | runtime final (toolchain completo — ainda não separado, ver M07) |
+| Go | 1.26 | *(nenhum — só a base distroless)* | `image-base-go1-26` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
+| Go | 1.26 | `go-1.26`, `busybox` | `image-base-go1-26-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Node.js | 22 (LTS) | `nodejs-22` | `image-base-nodejs22` | `appuser` | runtime final (sem npm/shell) |
 | Node.js | 22 (LTS) | `nodejs-22`, `npm`, `busybox` | `image-base-nodejs22-dev` | `appuser` | build stage (tem npm e shell) |
 | Node.js | 24 (LTS) | `nodejs-24` | `image-base-nodejs24` | `appuser` | runtime final (sem npm/shell) |
 | Node.js | 24 (LTS) | `nodejs-24`, `npm`, `busybox` | `image-base-nodejs24-dev` | `appuser` | build stage (tem npm e shell) |
-| .NET | 8 (LTS) | `dotnet-8-sdk` | `image-base-dotnet8` | `appuser` | runtime final |
-| .NET | 10 (LTS) | `dotnet-10-sdk` | `image-base-dotnet10` | `appuser` | runtime final |
+| .NET | 8 (LTS) | `dotnet-8-sdk` | `image-base-dotnet8` | `appuser` | runtime final (SDK completo — ainda não separado, ver M07) |
+| .NET | 10 (LTS) | `aspnet-10-runtime` | `image-base-dotnet10` | `appuser` | runtime final (ASP.NET Core + .NET runtime, sem SDK/shell) |
+| .NET | 10 (LTS) | `dotnet-10-sdk`, `busybox` | `image-base-dotnet10-dev` | `appuser` | build stage (SDK completo + shell, para `dotnet publish`) |
+
+**⚠️ Migração (09/09/2026):** `image-base-go1-26`, `image-base-dotnet10` e `image-base-java21` deixaram de conter o toolchain de build (Go, SDK do .NET, JDK) e passaram a ser runtime-only, seguindo o mesmo padrão que `image-base-nodejs22`/`nodejs24` já usavam. Quem consumia essas três tags para **compilar** (não só rodar) precisa migrar para as novas tags `-dev` (`image-base-go1-26-dev`, `image-base-dotnet10-dev`, `image-base-java21-dev`), que mantêm o toolchain completo — veja os exemplos de Dockerfile multi-stage abaixo. `go1-25`, `dotnet8` e `java25` ainda não passaram por essa separação (continuam com o toolchain completo na tag única).
 
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
@@ -71,12 +76,50 @@ aws ecr get-login-password --region <região> | docker login --username AWS --pa
 docker pull <registro-ecr>/image-base-nodejs24:stable
 ```
 
-Todas as imagens já vêm com `work-dir: /app` e rodando como usuário non-root (`spring` para Java, `appuser` para as demais). Para runtimes que não dependem de gerenciador de pacotes, um Dockerfile de aplicação normalmente só precisa copiar o binário/artefato:
+Todas as imagens já vêm com `work-dir: /app` e rodando como usuário non-root (`spring` para Java, `appuser` para as demais). Runtimes cujo artefato final já vem pronto de outro lugar (ex.: um binário Go compilado localmente) podem copiar direto:
 
 ```Dockerfile
 FROM <registro-ecr>/image-base-go1-26:stable
 COPY --chown=appuser:appuser ./app /app/app
 CMD ["/app/app"]
+```
+
+Para Go, .NET e Java, o normal é compilar dentro do próprio pipeline — use a variante `-dev` só no estágio de build (tem o toolchain e `busybox`, para os wrappers tipo `mvnw`/`gradlew` funcionarem) e a variante final (sem toolchain/shell) no estágio de runtime:
+
+```Dockerfile
+# Go: binário estático, sem toolchain no runtime
+FROM <registro-ecr>/image-base-go1-26-dev:stable AS build
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+RUN go build -o server .
+
+FROM <registro-ecr>/image-base-go1-26:stable
+COPY --chown=appuser:appuser --from=build /app/server /app/server
+CMD ["/app/server"]
+```
+
+```Dockerfile
+# .NET: publica no estágio SDK, roda no runtime ASP.NET (sem SDK)
+FROM <registro-ecr>/image-base-dotnet10-dev:stable AS build
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+RUN dotnet publish -c Release -o /app/out --self-contained false
+
+FROM <registro-ecr>/image-base-dotnet10:stable
+COPY --chown=appuser:appuser --from=build /app/out /app
+CMD ["/usr/bin/dotnet", "/app/app.dll"]
+```
+
+```Dockerfile
+# Java: compila com javac/Maven/Gradle no JDK, roda no JRE (sem javac)
+FROM <registro-ecr>/image-base-java21-dev:stable AS build
+WORKDIR /app
+COPY --chown=spring:spring . .
+RUN javac -d out Main.java
+
+FROM <registro-ecr>/image-base-java21:stable
+COPY --chown=spring:spring --from=build /app/out /app
+CMD ["java", "-cp", "/app", "Main"]
 ```
 
 Para Node.js, use a variante `-dev` só no estágio de build (onde `npm install` precisa rodar) e a variante final (sem `npm`/shell) no estágio de runtime — a imagem que vai pra produção nunca tem `npm` nem shell:
@@ -115,12 +158,15 @@ Cada pasta tem uma responsabilidade única: `distroless/` define a base comum, `
 ├── distroless
 │   └── image-base.yaml             # base comum: ca-certificates-bundle + bundle-pem-test (sem wolfi-base/apk/shell)
 ├── frameworks
-│   ├── dotnet10.yaml                 # dotnet-10-sdk (LTS mais recente)
-│   ├── dotnet8.yaml                  # dotnet-8-sdk (LTS)
-│   ├── go1-25.yaml                   # go-1.25
-│   ├── go1-26.yaml                   # go-1.26 (mais recente)
-│   ├── java21.yaml                   # openjdk-21 (LTS)
-│   ├── java25.yaml                   # openjdk-25 (LTS mais recente)
+│   ├── dotnet10.yaml                 # aspnet-10-runtime, variante "run" (sem SDK)
+│   ├── dotnet10-dev.yaml              # dotnet-10-sdk, só para estágio de build
+│   ├── dotnet8.yaml                  # dotnet-8-sdk (LTS, ainda não separado run/dev)
+│   ├── go1-25.yaml                   # go-1.25 (ainda não separado run/dev)
+│   ├── go1-26.yaml                   # variante "run": só a base, sem toolchain (binário estático)
+│   ├── go1-26-dev.yaml                # go-1.26, só para estágio de build
+│   ├── java21.yaml                   # openjdk-21-jre, variante "run" (sem javac/jmods)
+│   ├── java21-dev.yaml                # openjdk-21, só para estágio de build (JDK completo)
+│   ├── java25.yaml                   # openjdk-25 (LTS mais recente, ainda não separado run/dev)
 │   ├── nodejs22.yaml                 # nodejs-22, variante "run" (sem npm/busybox)
 │   ├── nodejs22-dev.yaml             # nodejs-22 + npm + busybox, só para estágio de build
 │   ├── nodejs24.yaml                 # nodejs-24, variante "run" (sem npm/busybox)
@@ -147,10 +193,15 @@ flowchart TD
         B3["bundle-pem-test<br/>(apk compilado pelo melange)"]
     end
 
-    Base -- "include:" --> J["java21.yaml + java25.yaml<br/>openjdk-21 / openjdk-25 (LTS) · user spring"]
+    Base -- "include:" --> J["java21.yaml (JRE) + java25.yaml (JDK)<br/>openjdk-21-jre / openjdk-25 · user spring"]
+    Base -- "include:" --> JD["java21-dev.yaml<br/>openjdk-21 (JDK), só build stage · user spring"]
     Base -- "include:" --> N["nodejs22.yaml + nodejs24.yaml<br/>runtime final, sem npm/busybox · user appuser"]
     Base -- "include:" --> ND["nodejs22-dev.yaml + nodejs24-dev.yaml<br/>+ npm + busybox, só build stage · user appuser"]
-    Base -- "include:" --> OUT["... mesmo padrão para<br/>Python, Go e .NET"]
+    Base -- "include:" --> G["go1-26.yaml<br/>sem toolchain, binário estático · user appuser"]
+    Base -- "include:" --> GD["go1-26-dev.yaml<br/>go-1.26, só build stage · user appuser"]
+    Base -- "include:" --> DN["dotnet10.yaml<br/>aspnet-10-runtime, sem SDK · user appuser"]
+    Base -- "include:" --> DND["dotnet10-dev.yaml<br/>dotnet-10-sdk, só build stage · user appuser"]
+    Base -- "include:" --> OUT["... Python, go1-25, dotnet8 e java25<br/>ainda sem separação run/dev (M07)"]
 ```
 
 (a tabela [Imagens disponíveis](#imagens-disponíveis) acima tem a lista completa e exata dos 12 arquivos)
@@ -307,7 +358,7 @@ O [`Makefile`](Makefile) automatiza o build local — melange e apko sempre roda
 ```bash
 make list                                                # lista os frameworks disponiveis
 make build FRAMEWORK=go1-26                               # builda uma imagem local (apko publish --local)
-make run FRAMEWORK=go1-26 ENTRYPOINT=/usr/bin/go ARGS=version  # builda e roda um comando na imagem
+make run FRAMEWORK=go1-26-dev ENTRYPOINT=/usr/bin/go ARGS=version  # builda e roda um comando na imagem (toolchain só existe na variante -dev)
 make clean                                                # remove chave e pacotes locais
 ```
 
