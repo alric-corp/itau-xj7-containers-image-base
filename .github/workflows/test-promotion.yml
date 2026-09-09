@@ -62,3 +62,12 @@ jobs:
             .github/workflows/workflow.yml \
             .github/workflows/test-promotion.yml \
             .github/workflows/recover-stable.yml
+
+      # M16: regras que o actionlint não checa — checkout sem credencial Git
+      # persistida, nenhuma entrada interpolada dentro de `run`, limite de
+      # duração por job executor, permissões declaradas e Actions por SHA
+      # completo. Vale daqui pra frente, não só na limpeza inicial.
+      - name: Workflow hardening rules
+        run: |
+          python3 -m pip install --quiet PyYAML==6.0.3
+          python3 -B .github/scripts/lint_workflow_hardening.py

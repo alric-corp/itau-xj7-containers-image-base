@@ -82,10 +82,14 @@ jobs:
       # dependência comum do bundle), esta leg falha aqui — visível, sem
       # publicação — sem afetar as legs de outros frameworks cujo artifact
       # foi aprovado normalmente.
+      # M16: o nome do framework chega por env (já validado no passo acima),
+      # nunca interpolado direto no corpo do script deste job privilegiado.
       - name: Require validated artifact
         if: steps.download.outcome == 'failure'
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
         run: |
-          echo "::error::Nenhum artifact validado para ${{ matrix.framework }} — validação falhou ou não rodou (ver job 'validate'). Publicação abortada para este framework." >&2
+          echo "::error::Nenhum artifact validado para ${FRAMEWORK} — validação falhou ou não rodou (ver job 'validate'). Publicação abortada para este framework." >&2
           exit 1
 
       - name: Verify artifact integrity and platforms
