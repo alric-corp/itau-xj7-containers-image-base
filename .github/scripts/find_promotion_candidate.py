@@ -12,8 +12,74 @@ Uso:
 """
 import datetime
 import json
+import math
 import os
+import re
 import sys
+
+
+IMAGE_INDEX_TYPES = {
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+}
+
+
+def pushed_at(image: dict) -> datetime.datetime:
+    timestamp = datetime.datetime.fromisoformat(image["imagePushedAt"])
+    if timestamp.tzinfo is None:
+        raise ValueError("imagePushedAt deve incluir o fuso horário")
+    return timestamp
+
+
+def is_build_tag(tag: str) -> bool:
+    # Mantém compatibilidade com builds anteriores à identificação por run.
+    match = re.fullmatch(r"([0-9]{6}-[0-9]{4})(?:-r[1-9][0-9]*-a[1-9][0-9]*)?", tag)
+    if not match:
+        return False
+    try:
+        datetime.datetime.strptime(match[1], "%d%m%y-%H%M")
+    except ValueError:
+        return False
+    return True
+
+
+def build_tag_order(tag):
+    parts = tag.split("-")
+    return (datetime.datetime.strptime("-".join(parts[:2]), "%d%m%y-%H%M"),
+            int(parts[2][1:]) if len(parts) > 2 else 0,
+            int(parts[3][1:]) if len(parts) > 3 else 0)
+
+
+def select_candidate(details: list, soak_hours: float, now: datetime.datetime):
+    """Seleciona um índice elegível sem regredir em relação ao stable atual.
+
+    O tipo do manifest filtra artefatos auxiliares; não substitui a verificação
+    remota de plataformas, assinatura e provenance antes da promoção.
+    """
+    if not math.isfinite(soak_hours) or soak_hours < 0:
+        raise ValueError("soak-hours deve ser um número finito maior ou igual a zero")
+    cutoff = now - datetime.timedelta(hours=soak_hours)
+    stable_images = [img for img in details if "stable" in img.get("imageTags", [])]
+    stable_digests = {img["imageDigest"] for img in stable_images}
+    stable_time = max((pushed_at(img) for img in stable_images), default=None)
+
+    candidates = []
+    for img in details:
+        if img["imageDigest"] in stable_digests:
+            continue
+        if img.get("imageManifestMediaType") not in IMAGE_INDEX_TYPES:
+            continue
+        build_tags = [tag for tag in img.get("imageTags", []) if is_build_tag(tag)]
+        if not build_tags:
+            continue
+        timestamp = pushed_at(img)
+        if timestamp > cutoff or (stable_time is not None and timestamp <= stable_time):
+            continue
+        # O rótulo mais recente é informativo; a elegibilidade usa o push ECR.
+        tag = max(build_tags, key=build_tag_order)
+        candidates.append((timestamp, tag, img["imageDigest"]))
+
+    return max(candidates, default=None)
 
 
 def emit(key: str, value: str) -> None:
@@ -28,37 +94,15 @@ def main() -> None:
     with open(images_path) as f:
         details = json.load(f)["imageDetails"]
 
-    # `aws ecr describe-images --output json` serializa imagePushedAt como
-    # string ISO 8601 (ex.: "2026-09-07T22:57:53.682000-03:00"), não como
-    # epoch numérico — fromisoformat entende esse formato (com offset e
-    # microssegundos) diretamente.
     now = datetime.datetime.now(datetime.timezone.utc)
-    cutoff = now - datetime.timedelta(hours=soak_hours)
+    candidate = select_candidate(details, soak_hours, now)
 
-    # Builds imutáveis (qualquer tag != "stable"), mais recente primeiro.
-    candidates = []
-    for img in details:
-        tags = img.get("imageTags", [])
-        immutable_tags = [t for t in tags if t != "stable"]
-        if not immutable_tags:
-            continue
-        pushed_at = datetime.datetime.fromisoformat(img["imagePushedAt"])
-        candidates.append((pushed_at, immutable_tags[0], img["imageDigest"]))
-    candidates.sort(key=lambda c: c[0], reverse=True)
-
-    if not candidates:
-        print(f"{repo}: nenhum build imutável encontrado, nada a promover")
+    if candidate is None:
+        print(f"{repo}: nenhum build elegível mais novo que stable, nada a promover")
         emit("skip", "true")
         return
 
-    pushed_at, tag, digest = candidates[0]
-    if pushed_at > cutoff:
-        remaining = pushed_at - cutoff
-        remaining_h = remaining.total_seconds() / 3600
-        print(f"{repo}: build {tag} ainda dentro da janela de soak (~{remaining_h:.1f}h restantes)")
-        emit("skip", "true")
-        return
-
+    _, tag, digest = candidate
     print(f"{repo}: build {tag} passou da janela de soak, candidato à promoção")
     emit("skip", "false")
     emit("tag", tag)
