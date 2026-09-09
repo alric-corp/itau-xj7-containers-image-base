@@ -41,21 +41,23 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 
 | Linguagem | Versão | Pacote(s) Wolfi | Imagem (repositório ECR) | Usuário | Uso |
 |---|---|---|---|---|---|
-| Java | 21 (LTS) | `openjdk-21-jre` | `image-base-java21` | `spring` | runtime final (sem `javac`/jmods) |
-| Java | 21 (LTS) | `openjdk-21` | `image-base-java21-dev` | `spring` | build stage (JDK completo, com `javac`) |
+| Java | 21 (LTS) | `openjdk-21-jre` | `image-base-java21` | `spring` | runtime final (sem `javac`/jmods/shell) |
+| Java | 21 (LTS) | `openjdk-21`, `busybox` | `image-base-java21-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
 | Java | 25 (LTS) | `openjdk-25` | `image-base-java25` | `spring` | runtime final (JDK completo — ainda não separado, ver M07) |
 | Python | 3.13 | `python-3.13` | `image-base-python3-13` | `appuser` | runtime final |
 | Python | 3.14 | `python-3.14` | `image-base-python3-14` | `appuser` | runtime final |
 | Go | 1.25 | `go-1.25` | `image-base-go1-25` | `appuser` | runtime final (toolchain completo — ainda não separado, ver M07) |
-| Go | 1.26 | *(nenhum — só a base distroless)* | `image-base-go1-26` | `appuser` | runtime final (binário estático, sem toolchain) |
-| Go | 1.26 | `go-1.26` | `image-base-go1-26-dev` | `appuser` | build stage (toolchain completo, para compilar) |
+| Go | 1.26 | *(nenhum — só a base distroless)* | `image-base-go1-26` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
+| Go | 1.26 | `go-1.26`, `busybox` | `image-base-go1-26-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Node.js | 22 (LTS) | `nodejs-22` | `image-base-nodejs22` | `appuser` | runtime final (sem npm/shell) |
 | Node.js | 22 (LTS) | `nodejs-22`, `npm`, `busybox` | `image-base-nodejs22-dev` | `appuser` | build stage (tem npm e shell) |
 | Node.js | 24 (LTS) | `nodejs-24` | `image-base-nodejs24` | `appuser` | runtime final (sem npm/shell) |
 | Node.js | 24 (LTS) | `nodejs-24`, `npm`, `busybox` | `image-base-nodejs24-dev` | `appuser` | build stage (tem npm e shell) |
 | .NET | 8 (LTS) | `dotnet-8-sdk` | `image-base-dotnet8` | `appuser` | runtime final (SDK completo — ainda não separado, ver M07) |
-| .NET | 10 (LTS) | `aspnet-10-runtime` | `image-base-dotnet10` | `appuser` | runtime final (ASP.NET Core + .NET runtime, sem SDK) |
-| .NET | 10 (LTS) | `dotnet-10-sdk` | `image-base-dotnet10-dev` | `appuser` | build stage (SDK completo, para `dotnet publish`) |
+| .NET | 10 (LTS) | `aspnet-10-runtime` | `image-base-dotnet10` | `appuser` | runtime final (ASP.NET Core + .NET runtime, sem SDK/shell) |
+| .NET | 10 (LTS) | `dotnet-10-sdk`, `busybox` | `image-base-dotnet10-dev` | `appuser` | build stage (SDK completo + shell, para `dotnet publish`) |
+
+**⚠️ Migração (09/09/2026):** `image-base-go1-26`, `image-base-dotnet10` e `image-base-java21` deixaram de conter o toolchain de build (Go, SDK do .NET, JDK) e passaram a ser runtime-only, seguindo o mesmo padrão que `image-base-nodejs22`/`nodejs24` já usavam. Quem consumia essas três tags para **compilar** (não só rodar) precisa migrar para as novas tags `-dev` (`image-base-go1-26-dev`, `image-base-dotnet10-dev`, `image-base-java21-dev`), que mantêm o toolchain completo — veja os exemplos de Dockerfile multi-stage abaixo. `go1-25`, `dotnet8` e `java25` ainda não passaram por essa separação (continuam com o toolchain completo na tag única).
 
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
@@ -74,12 +76,50 @@ aws ecr get-login-password --region <região> | docker login --username AWS --pa
 docker pull <registro-ecr>/image-base-nodejs24:stable
 ```
 
-Todas as imagens já vêm com `work-dir: /app` e rodando como usuário non-root (`spring` para Java, `appuser` para as demais). Para runtimes que não dependem de gerenciador de pacotes, um Dockerfile de aplicação normalmente só precisa copiar o binário/artefato:
+Todas as imagens já vêm com `work-dir: /app` e rodando como usuário non-root (`spring` para Java, `appuser` para as demais). Runtimes cujo artefato final já vem pronto de outro lugar (ex.: um binário Go compilado localmente) podem copiar direto:
 
 ```Dockerfile
 FROM <registro-ecr>/image-base-go1-26:stable
 COPY --chown=appuser:appuser ./app /app/app
 CMD ["/app/app"]
+```
+
+Para Go, .NET e Java, o normal é compilar dentro do próprio pipeline — use a variante `-dev` só no estágio de build (tem o toolchain e `busybox`, para os wrappers tipo `mvnw`/`gradlew` funcionarem) e a variante final (sem toolchain/shell) no estágio de runtime:
+
+```Dockerfile
+# Go: binário estático, sem toolchain no runtime
+FROM <registro-ecr>/image-base-go1-26-dev:stable AS build
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+RUN go build -o server .
+
+FROM <registro-ecr>/image-base-go1-26:stable
+COPY --chown=appuser:appuser --from=build /app/server /app/server
+CMD ["/app/server"]
+```
+
+```Dockerfile
+# .NET: publica no estágio SDK, roda no runtime ASP.NET (sem SDK)
+FROM <registro-ecr>/image-base-dotnet10-dev:stable AS build
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+RUN dotnet publish -c Release -o /app/out --self-contained false
+
+FROM <registro-ecr>/image-base-dotnet10:stable
+COPY --chown=appuser:appuser --from=build /app/out /app
+CMD ["/usr/bin/dotnet", "/app/app.dll"]
+```
+
+```Dockerfile
+# Java: compila com javac/Maven/Gradle no JDK, roda no JRE (sem javac)
+FROM <registro-ecr>/image-base-java21-dev:stable AS build
+WORKDIR /app
+COPY --chown=spring:spring . .
+RUN javac -d out Main.java
+
+FROM <registro-ecr>/image-base-java21:stable
+COPY --chown=spring:spring --from=build /app/out /app
+CMD ["java", "-cp", "/app", "Main"]
 ```
 
 Para Node.js, use a variante `-dev` só no estágio de build (onde `npm install` precisa rodar) e a variante final (sem `npm`/shell) no estágio de runtime — a imagem que vai pra produção nunca tem `npm` nem shell:

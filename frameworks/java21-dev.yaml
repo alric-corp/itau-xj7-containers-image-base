@@ -1,10 +1,16 @@
 # Variante "dev": usada só no estágio de build (multi-stage) da aplicação,
 # para compilar com `javac`/Maven/Gradle. Nunca deve ser a imagem final
 # publicada em produção — para isso use java21.yaml (JRE, sem javac/jmods).
+#
+# busybox entra pelo mesmo motivo do nodejs-dev: sem shell, um `RUN javac
+# ...` normal (shell-form) num Dockerfile falha, e os wrappers mvnw/gradlew
+# são scripts shell (`#!/bin/sh`) — não executam sem /bin/sh de jeito
+# nenhum, mesmo em exec-form.
 include: distroless/image-base.yaml
 contents:
   packages:
     - openjdk-21
+    - busybox
 
 work-dir: /app
 
