@@ -66,7 +66,7 @@ arquivo. Alterações feitas com autorização explícita do responsável.
 | Push protection | desativado | **ativado** |
 | `sha_pinning_required` (Actions) | `false` | **`true`** |
 | Acesso do time `github_xj7_maintainer` ao repo | **nenhum** | `write` |
-| CODEOWNERS | 100% comentado, inerte | regras ativas (efetivas só após merge) |
+| CODEOWNERS | 100% comentado, inerte | regras ativas e comprovadas no PR #41 |
 | Revisão obrigatória de PR | não configurada | 1 aprovação + code owner + dismiss stale |
 | Required checks (`test`, `lint-workflows`) | obrigatórios | inalterado |
 | `enforce_admins` | encontrado `false` numa revisão externa posterior | **`true`** (reaplicado) |
@@ -115,16 +115,18 @@ Detalhes que mudam a leitura desses controles:
   qualquer checkout novo que esqueça a opção.
 - [x] Entradas inválidas falham antes da AWS **num dispatch real**, não só
   em teste local: ver "Dispatch real com entrada inválida" abaixo.
-- [ ] Proteção de revisão demonstrada em PR de teste: a configuração está
-  ativa e bloqueia de fato esta PR (`reviewDecision: REVIEW_REQUIRED`,
-  `mergeStateStatus: BLOCKED`, com `test`/`lint-workflows` `pass`) — mas isso
-  comprova só a regra genérica de aprovação. Falta o PR **pós-merge** tocando
-  `.github/workflows/**` que comprove a exigência específica de code owner,
-  porque o GitHub avalia CODEOWNERS pela branch base: até esta PR mesclar,
-  qualquer PR ainda cai no CODEOWNERS inerte da `main`. **Bloqueado em
-  aprovação humana:** esta PR só pode mesclar com aprovação de outro
-  administrador do repositório (`vigcf`) — o autor (`TomasAlric`) não pode
-  aprovar o próprio PR, e `enforce_admins: true` não permite contornar isso.
+- [x] Proteção de revisão demonstrada em PR de teste, nas duas camadas:
+  esta PR (#28) ficou `REVIEW_REQUIRED`/`BLOCKED` até `vigcf` aprovar (a
+  aprovação anterior, no SHA `12ec2ed`, foi descartada por
+  `dismiss_stale_reviews` após mais um push de documentação; a aprovação
+  válida foi no SHA `ef04072`), mesclada como `53e7d14`. Com o CODEOWNERS já
+  ativo na `main`, [PR #41](https://github.com/alric-corp/itau-xj7-containers-image-base/pull/41)
+  (descartável, um comentário em `.github/workflows/test-promotion.yml`)
+  comprovou a exigência **específica** de code owner pós-merge: o GitHub
+  computou `@vigcf` e o time `@alric-corp/github_xj7_maintainer` como
+  revisores exigidos direto do CODEOWNERS (`codeowners/errors` vazio), o PR
+  ficou bloqueado antes de qualquer aprovação, e só liberou depois de `vigcf`
+  — code owner de fato para esse caminho — aprovar. Mesclado como `d3ccafd`.
 - [ ] Ativar Renovate com acesso somente a este repositório e comprovar o
   primeiro PR real de digest, incluindo atualização consistente de todas as
   ocorrências, disponibilidade multi-arch, lint/build/scan e revisão humana.
