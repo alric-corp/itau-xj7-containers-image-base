@@ -1,3 +1,4 @@
+# M05: real fork PR validation; no functional build change.
 .DEFAULT_GOAL := help
 
 UNAME_ARCH := $(shell uname -m)
