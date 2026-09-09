@@ -1,0 +1,147 @@
+import datetime
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+from find_promotion_candidate import select_candidate
+
+
+NOW = datetime.datetime(2026, 9, 8, 9, tzinfo=datetime.timezone.utc)
+INDEX = "application/vnd.oci.image.index.v1+json"
+
+
+def image(tag="070926-0000", hours=8, digest="sha256:build", media_type=INDEX):
+    return {
+        "imageTags": [tag],
+        "imagePushedAt": (NOW - datetime.timedelta(hours=hours)).isoformat(),
+        "imageDigest": digest,
+        "imageManifestMediaType": media_type,
+    }
+
+
+class CandidateTests(unittest.TestCase):
+    def select(self, details, soak=6):
+        return select_candidate(details, soak, NOW)
+
+    def test_empty_repository(self):
+        self.assertIsNone(self.select([]))
+
+    def test_label_uses_chronology_then_numeric_run_and_attempt(self):
+        for tags, expected in (
+            (["310826-2300", "010926-0100"], "010926-0100"),
+            (["311225-2300", "010126-0100"], "010126-0100"),
+            (["010926-0100-r9-a9", "010926-0100-r10-a2", "010926-0100-r10-a10"],
+             "010926-0100-r10-a10"),
+        ):
+            candidate = image()
+            candidate["imageTags"] = tags
+            with self.subTest(tags=tags):
+                selected = self.select([candidate])
+                self.assertEqual(selected[1], expected)
+                self.assertEqual(selected[2], candidate["imageDigest"])
+
+    def test_run_and_attempt_tags_are_accepted(self):
+        self.assertIsNotNone(self.select([image(tag="080926-0000-r12345-a2")]))
+        for tag in ("080926-0000-r0-a1", "080926-0000-r123-a0", "080926-0000-r123"):
+            with self.subTest(tag=tag):
+                self.assertIsNone(self.select([image(tag=tag)]))
+
+    def test_newest_eligible_build_wins_regardless_of_input_order(self):
+        old = image(hours=12, digest="sha256:old")
+        new = image(hours=8, digest="sha256:new")
+        for details in ([old, new], [new, old]):
+            self.assertEqual(self.select(details)[2], "sha256:new")
+
+    def test_recent_build_does_not_hide_eligible_build(self):
+        # Às 09h, o push das 03h20 ainda não completou seis horas.
+        recent = image(hours=5 + 40 / 60, digest="sha256:recent")
+        self.assertEqual(self.select([recent, image()])[2], "sha256:build")
+        self.assertIsNone(self.select([recent]))
+
+    def test_exact_soak_boundary_is_eligible(self):
+        self.assertIsNotNone(self.select([image(hours=6)]))
+
+    def test_zero_soak_still_rejects_future_timestamp(self):
+        self.assertIsNotNone(self.select([image(hours=0)], soak=0))
+        self.assertIsNone(self.select([image(hours=-1)], soak=0))
+
+    def test_timezone_offset_is_respected(self):
+        candidate = image()
+        candidate["imagePushedAt"] = "2026-09-08T00:00:00-03:00"
+        self.assertIsNotNone(self.select([candidate]))
+
+    def test_invalid_soak_fails_closed(self):
+        for soak in (-1, float("nan"), float("inf"), -float("inf")):
+            with self.subTest(soak=soak), self.assertRaises(ValueError):
+                self.select([image()], soak)
+
+    def test_invalid_timestamp_fails_closed(self):
+        for timestamp in ("invalid", "2026-09-08T00:00:00"):
+            candidate = image()
+            candidate["imagePushedAt"] = timestamp
+            with self.subTest(timestamp=timestamp), self.assertRaises(ValueError):
+                self.select([candidate])
+
+    def test_signature_and_non_build_tags_are_ignored(self):
+        for tag in ("sha256-example.sig", "sha256-example.att", "latest", "stable",
+                    "310226-1200", "080926-2500", "080926-0000-extra"):
+            with self.subTest(tag=tag):
+                self.assertIsNone(self.select([image(tag=tag)]))
+
+    def test_only_multiarch_index_media_types_are_eligible(self):
+        for media_type in (None, "application/vnd.oci.image.manifest.v1+json",
+                           "application/vnd.oci.artifact.manifest.v1+json"):
+            with self.subTest(media_type=media_type):
+                self.assertIsNone(self.select([image(media_type=media_type)]))
+        docker_index = "application/vnd.docker.distribution.manifest.list.v2+json"
+        self.assertIsNotNone(self.select([image(media_type=docker_index)]))
+
+    def test_untagged_images_are_ignored(self):
+        candidate = image()
+        del candidate["imageTags"]
+        self.assertIsNone(self.select([candidate]))
+
+    def test_stable_is_not_promoted_again_or_rolled_back(self):
+        stable = image(hours=8, digest="sha256:stable")
+        stable["imageTags"].append("stable")
+        for old_hours in (8, 12):
+            with self.subTest(old_hours=old_hours):
+                self.assertIsNone(self.select([stable, image(hours=old_hours)]))
+        self.assertEqual(self.select([stable, image(hours=7)])[2], "sha256:build")
+
+    def test_stable_without_build_tag_still_prevents_rollback(self):
+        stable = image(tag="stable", hours=8)
+        self.assertIsNone(self.select([stable, image(hours=12, digest="sha256:old")]))
+
+    def test_cli_github_output_contract(self):
+        script = Path(__file__).with_name("find_promotion_candidate.py")
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "images.json"
+            output = Path(directory) / "output"
+            for details, expected in (
+                ([image()], {"skip": "false", "tag": "070926-0000",
+                             "digest": "sha256:build", "image": "example.invalid/test"}),
+                ([], {"skip": "true"}),
+            ):
+                # Fixture antiga para não depender do relógio do runner.
+                if details:
+                    details[0]["imagePushedAt"] = "2020-01-01T00:00:00+00:00"
+                source.write_text(json.dumps({"imageDetails": details}))
+                output.write_text("")
+                result = subprocess.run(
+                    [sys.executable, "-B", str(script), str(source), "6",
+                     "example.invalid", "test"],
+                    env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(dict(line.split("=", 1) for line in
+                                      output.read_text().splitlines()), expected)
+
+
+if __name__ == "__main__":
+    unittest.main()
