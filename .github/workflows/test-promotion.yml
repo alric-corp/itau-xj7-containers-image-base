@@ -71,3 +71,7 @@ jobs:
         run: |
           python3 -m pip install --quiet PyYAML==6.0.3
           python3 -B .github/scripts/lint_workflow_hardening.py
+
+      # M16 acceptance test: comment-only change to a protected path, to
+      # prove the CODEOWNERS rule requires code-owner review post-merge.
+      # No behavior change; safe to close without merging.
