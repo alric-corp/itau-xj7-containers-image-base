@@ -126,6 +126,14 @@ jobs:
           IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
         run: python3 -B .github/scripts/scan_images.py remote "$IMAGE_REF"
 
+      # M11: mesma visibilidade não-bloqueante do build — nunca falha o
+      # job, roda mesmo se o re-scan acima já bloqueou a promoção.
+      - name: Report CVEs without an available fix (informational)
+        if: steps.candidate.outputs.skip == 'false'
+        env:
+          IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
+        run: python3 -B .github/scripts/report_unfixed_cves.py remote "$IMAGE_REF"
+
       - name: Preserve promotion scan evidence
         if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
