@@ -67,7 +67,7 @@ arquivo. Alterações feitas com autorização explícita do responsável.
 | CODEOWNERS | 100% comentado, inerte | regras ativas (efetivas só após merge) |
 | Revisão obrigatória de PR | não configurada | 1 aprovação + code owner + dismiss stale |
 | Required checks (`test`, `lint-workflows`) | obrigatórios | inalterado |
-| `enforce_admins` | `true` | inalterado |
+| `enforce_admins` | encontrado `false` numa revisão externa posterior | **`true`** (reaplicado) |
 | Default token do Actions | `read`, sem aprovar PR | inalterado |
 | `allowed_actions` | `all` | inalterado |
 | Dependabot security updates | desativado | inalterado (fora do pedido) |
@@ -92,6 +92,15 @@ Detalhes que mudam a leitura desses controles:
 - Consequência operacional imediata: com `enforce_admins: true` e uma
   aprovação obrigatória, este próprio PR precisa da aprovação do outro admin
   para entrar. Isso é o comportamento pretendido, não um efeito colateral.
+- **`enforce_admins` regrediu para `false` entre a entrega original e uma
+  revisão externa posterior (achado real dessa revisão, não presumido).** A
+  API de proteção da `main` confirmou o valor `false` sem nenhum ruleset
+  compensatório — nesse estado, um administrador contornava a revisão
+  obrigatória mesmo com a documentação afirmando o contrário. Reaplicado via
+  `POST .../branches/main/protection/enforce_admins` e reconfirmado `true`.
+  Este plano não tem acesso ao audit log de organização (recurso Enterprise)
+  para determinar a causa da regressão; não presumir que o valor
+  permanecerá estável sem reverificação periódica.
 
 ## Aceite
 
