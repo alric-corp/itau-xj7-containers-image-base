@@ -1,10 +1,10 @@
-# Variante "run": openjdk-21-jre (JRE), sem javac/jmods/javadoc/demos —
-# sem compilador. Compile em java21-dev.yaml (estágio de build) e copie o
-# JAR/classes para esta imagem no estágio final.
+# Variante "dev": usada só no estágio de build (multi-stage) da aplicação,
+# para compilar com `javac`/Maven/Gradle. Nunca deve ser a imagem final
+# publicada em produção — para isso use java21.yaml (JRE, sem javac/jmods).
 include: distroless/image-base.yaml
 contents:
   packages:
-    - openjdk-21-jre
+    - openjdk-21
 
 work-dir: /app
 
