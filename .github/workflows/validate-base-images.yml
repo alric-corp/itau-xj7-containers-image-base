@@ -118,6 +118,17 @@ jobs:
           FRAMEWORK: ${{ matrix.framework }}
         run: python3 -B .github/scripts/scan_images.py oci "${FRAMEWORK}.oci"
 
+      # M11: o gate acima usa --ignore-unfixed de propósito (bloquear por
+      # algo que ninguém pode corrigir ainda não ajuda) — mas isso deixa
+      # CVEs sem correção completamente invisíveis. Este passo é só
+      # visibilidade: nunca falha o job, roda mesmo se o scan acima já
+      # bloqueou, e nunca esconde a causa real de um bloqueio.
+      - name: Report CVEs without an available fix (informational)
+        if: always()
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: python3 -B .github/scripts/report_unfixed_cves.py oci "${FRAMEWORK}.oci"
+
       - name: Preserve scan evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
