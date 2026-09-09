@@ -17,6 +17,7 @@ on:
         required: true
 
 permissions:
+  totally-not-a-real-scope: write
   id-token: write           # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
   contents: read
   attestations: write       # obrigatório para actions/attest-build-provenance
