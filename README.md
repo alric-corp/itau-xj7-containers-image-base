@@ -14,6 +14,7 @@ Imagens base **distroless multi-arquitetura** (`amd64`/`arm64`) para **Java, Pyt
   - [Como as imagens são compostas](#como-as-imagens-são-compostas)
   - [O pacote `bundle-pem-test` (melange)](#o-pacote-bundle-pem-test-melange)
   - [Pipeline de CI/CD (GitHub Actions)](#pipeline-de-cicd-github-actions)
+  - [Checks obrigatórios, revisão e endurecimento (M12/M16)](#checks-obrigatórios-revisão-e-endurecimento-m12m16)
   - [Gate de promoção para stable (canário de soak)](#gate-de-promoção-para-stable-canário-de-soak)
   - [Recuperação de stable (runbook, M15)](#recuperação-de-stable-runbook-m15)
   - [Verificação: assinatura e build provenance](#verificação-assinatura-e-build-provenance)
@@ -266,13 +267,47 @@ O build do CI usa `apko build` uma única vez por framework para produzir um lay
 
 Relatórios JSON e digests dos manifests ficam nos artifacts `build-scans-<framework>-<tentativa>` por 30 dias. O layout aprovado, sua evidência e os SBOMs são transferidos em `validated-oci-<framework>` por três dias. Uma falha em qualquer arquitetura impede a disponibilização desse artifact para publicação.
 
-A validação usa matrix com `fail-fast: false`. **A publicação só começa se todos os frameworks selecionados passarem**; uma falha de validação bloqueia o lote daquele run. O job de publicação tem matrix própria e autenticação AWS restrita à `main`. Para publicar um subconjunto validado, uma execução manual pode selecionar os frameworks desejados.
+A validação usa matrix com `fail-fast: false`. **A publicação é independente por framework (M13):** cada leg do publicador exige o seu próprio artifact `validated-oci-<framework>` e falha, visível e sem publicar, se a validação daquele framework tiver reprovado — sem derrubar os demais do lote. Uma falha numa dependência comum, como o bundle melange, continua bloqueando todos. O job de publicação tem matrix própria e autenticação AWS restrita à `main`. Para publicar um subconjunto, uma execução manual pode selecionar os frameworks desejados.
 
 **Identidade do artefato (M02):** o publicador baixa o layout aprovado do mesmo run, verifica novamente sua integridade e usa Skopeo com `copy --all --preserve-digests`. O digest devolvido pela cópia precisa ser igual ao índice validado; não há novo build nem resolução de pacotes nesse job. Após copiar, o publicador lê a tag de volta e confere os bytes do índice e os manifests de ambas as arquiteturas contra a evidência validada. O artifact `publication-<framework>-<tentativa>` preserva essa comparação por 30 dias. A cópia foi comprovada em ECR exclusivo de teste e a leitura de volta em registry local; a integração completa na `main` ainda depende da validação do workflow autenticado.
 
 O gate mantém `--ignore-unfixed` e severidades `CRITICAL,HIGH,MEDIUM,LOW`, além do scan de segredos. O scan aprovado representa apenas a política configurada e os dados disponíveis ao Trivy naquele momento. A triagem automática de CVEs permanece pausada; sua futura reativação deverá consumir os relatórios JSON, pois as tabelas em logs deixaram de ser a saída principal.
 
 QEMU continua restrito ao job melange, que executa comandos no sandbox do pacote. Apko compõe os pacotes sem executar os runtimes. Os testes funcionais das imagens continuam pendentes em M08.
+
+
+## Checks obrigatórios, revisão e endurecimento (M12/M16)
+
+Merge na `main` exige, sem exceção para administradores (`enforce_admins`):
+
+- **`test`** — 81 testes de pipeline e 13 de certificados, sem AWS.
+- **`lint-workflows`** — `actionlint` nos seis workflows mantidos à mão, mais
+  [lint_workflow_hardening.py](.github/scripts/lint_workflow_hardening.py):
+  checkout sem `persist-credentials: false`, expressão `${{ }}` dentro de um
+  `run`, job executor sem `timeout-minutes`, workflow sem `permissions` no
+  topo ou Action externa sem SHA completo reprovam o check.
+- **Uma aprovação**, com revisão de code owner nos caminhos do
+  [CODEOWNERS](.github/CODEOWNERS) (`workflows`, `actions`, `scripts`,
+  `tests`, `melange`, `Makefile`). Aprovações são descartadas a cada novo
+  push.
+
+Os dois checks rodam **sem filtro de path**: um required check com filtro
+nunca dispara para um PR fora do escopo e fica pendente para sempre em vez de
+aprovar. São rápidos (segundos), então um PR só de documentação recebe
+resultado definido.
+
+Entradas de execução manual passam por
+[validate_inputs.py](.github/scripts/validate_inputs.py) **antes** de
+qualquer credencial AWS: nome único pertencente ao catálogo
+`frameworks/*.yaml`, soak finito e não negativo, digest `sha256:<64 hex>`. O
+input rejeitado não é ecoado de volta no log. Nenhum input é interpolado
+dentro de um `run`; todos chegam por `env:` e são usados com aspas.
+
+No lado da plataforma estão ativos secret scanning, push protection e
+`sha_pinning_required` (o repositório já fixava tudo por SHA completo; agora
+o GitHub exige). O token padrão do Actions é `read` e não pode aprovar PRs.
+Detalhes, estado anterior e pendências em
+[docs/m09-m16-review.md](docs/m09-m16-review.md).
 
 ## Gate de promoção para stable (canário de soak)
 

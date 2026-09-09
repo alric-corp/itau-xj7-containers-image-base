@@ -59,24 +59,24 @@ jobs:
       group: promote-stable-${{ vars.AWS_ROLE_ARN }}-${{ vars.AWS_REGION }}-${{ inputs.framework }}
       cancel-in-progress: false
     steps:
+      # M16: sem credencial Git persistida — nenhum passo daqui faz push.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - name: Validate inputs
+      # M16: guard antes de qualquer credencial AWS. Mesma validação
+      # compartilhada com build/validação/promoção — o nome precisa casar
+      # com o padrão do catálogo E existir em frameworks/, não basta um
+      # caminho que resolva para um arquivo .yaml existente.
+      - name: Validate inputs before privileged operations
         env:
           FRAMEWORK: ${{ inputs.framework }}
           DIGEST: ${{ inputs.digest }}
           REASON: ${{ inputs.reason }}
         run: |
           set -eu
-          if [ ! -f "frameworks/${FRAMEWORK}.yaml" ]; then
-            echo "::error::framework '${FRAMEWORK}' não existe em frameworks/ — não é um framework do catálogo" >&2
-            exit 1
-          fi
-          if ! printf '%s' "$DIGEST" | grep -qE '^sha256:[0-9a-f]{64}$'; then
-            echo "::error::digest precisa ser sha256:<64 hex>, recebido: $DIGEST" >&2
-            exit 1
-          fi
+          python3 -B .github/scripts/validate_inputs.py
           if [ -z "$REASON" ]; then
             echo "::error::reason não pode ser vazio" >&2
             exit 1

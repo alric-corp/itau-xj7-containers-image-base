@@ -69,6 +69,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow inputs before privileged operations
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+          SOAK_HOURS: ${{ inputs.soak-hours }}
+        run: python3 -B .github/scripts/validate_inputs.py
 
       # inputs.aws-region/aws-role-arn só existem no workflow_call (o path de
       # produção, chamado por workflow.yml); no workflow_dispatch direto
@@ -95,9 +103,10 @@ jobs:
         env:
           FRAMEWORK: ${{ matrix.framework }}
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SOAK_HOURS: ${{ inputs.soak-hours }}
         run: |
           python3 .github/scripts/find_promotion_candidate.py \
-            images.json "${{ inputs.soak-hours }}" "$REGISTRY" "image-base-${FRAMEWORK}" \
+            images.json "$SOAK_HOURS" "$REGISTRY" "image-base-${FRAMEWORK}" \
             .github/promotion-quarantine.json
 
       # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
@@ -119,6 +128,10 @@ jobs:
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: ${{ env.TRIVY_VERSION }}
+
+      - name: Record promotion tool versions
+        if: steps.candidate.outputs.skip == 'false'
+        run: python3 -B .github/scripts/tool_versions.py promotion reports/tool-versions.json
 
       - name: Re-scan both architectures before promotion
         if: steps.candidate.outputs.skip == 'false'
