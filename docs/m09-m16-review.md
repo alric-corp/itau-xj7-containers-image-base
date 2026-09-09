@@ -37,6 +37,17 @@ workflow gerado de triagem.
   registradas por etapa, com commit/run/tentativa, junto dos artifacts
   existentes. Skopeo mantém arquivo de versão e verificação de
   disponibilidade antes da AWS. O coletor não exporta ambiente nem secrets.
+- Código não confiável em contexto privilegiado: nenhum workflow mantido à
+  mão usa `pull_request_target`, `issue_comment` ou `workflow_run`. PRs entram
+  por `pull_request`, que roda com token de leitura e sem OIDC. O único
+  `workflow_run` do repositório está no `cve-triage.lock.yml` gerado, que já
+  condiciona a execução a `workflow_run.repository.id == github.repository_id`
+  e `!workflow_run.repository.fork`, e cujo gatilho automático está pausado.
+  Nenhum job faz checkout de uma ref controlada pelo autor do PR.
+- Campos de diagnóstico: nenhum workflow imprime `toJSON(github)`, `printenv`
+  ou dump de ambiente. O coletor de versões grava só a saída dos comandos de
+  versão em allowlist, mais commit/run/tentativa. Verificado por varredura nos
+  seis workflows e coberto por teste (`test_records_versions_without_secrets`).
 - `renovate.json` prepara propostas semanais de atualização dos digests de
   apko, melange, Skopeo e actionlint nos workflows/Makefile. Só o manager
   customizado, sem concorrer com o Dependabot de Actions, sem tocar o lock
