@@ -185,6 +185,15 @@ Avaliação do texto fornecido pelo responsável: o endpoint Markdown do catálo
 
 Referências verificadas: [cache, escopo e proteção contra poisoning](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching), [dependências e concorrência](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) e [exemplo oficial de serviço com healthcheck limitado](https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers).
 
+**M09/M16 — implementação parcial preparada em 09/09/2026**
+
+- [x] Validação local de inputs (catálogo, duplicados, traversal/injeção e soak finito não negativo) antes das etapas AWS; checkouts sem credenciais persistidas; coletor de versões por fase para os artifacts.
+- [x] Configuração de atualização de digests preparada em `renovate.json`, sem automerge e sem alterar pins nesta entrega; autoria principal Codex, solicitada pelo mantenedor, documentada em `AGENTS.md`.
+- [ ] Ativação e primeiro PR real do Renovate; CI/publicação/promoção autenticadas da implementação; revisão dos PRs Dependabot. M09 permanece parcial.
+- [ ] Secret scanning/push protection desativados na inspeção; CODEOWNERS inativo e sem revisão obrigatória. Checks M12 já obrigatórios inclusive para administradores. Ativação dessas proteções e demais cenários remotos de M16 permanecem pendentes.
+
+Escopo, evidências e limites: [revisão M09/M16](docs/m09-m16-review.md). Nenhuma trust policy, Environment ou configuração remota foi alterada.
+
 #### Checklist de acompanhamento
 
 Atualizar este checklist a cada entrega, preservando os IDs M01–M11 e registrando data, escopo e evidências no histórico abaixo. Uma caixa marcada comprova apenas o escopo descrito: implementação e validação local não equivalem a execução no GitHub ou liberação no ECR. Marcar uma melhoria inteira como concluída somente após cumprir todos os seus critérios de aceite. Acrescentar links de commit/PR/run quando disponíveis.

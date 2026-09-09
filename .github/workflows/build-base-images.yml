@@ -45,6 +45,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow inputs before privileged operations
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+        run: python3 -B .github/scripts/validate_inputs.py
 
       - name: Download validated OCI artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -63,6 +70,12 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --pull=always "$SKOPEO_IMAGE" --version | tee skopeo-version.txt
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Record publication tool versions
+        run: python3 -B .github/scripts/tool_versions.py publication tool-versions.json
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
@@ -149,9 +162,6 @@ jobs:
       # do Rekor e anexada ao próprio repositório ECR como um artefato OCI
       # adicional (tag "sha256-<digest>.sig" se o ECR ainda não suportar a
       # OCI Referrers API nesta região).
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
       - name: Sign published image (keyless)
         env:
           IMAGE_REF: ${{ steps.publish.outputs.image_ref }}
@@ -181,5 +191,6 @@ jobs:
             published-index.json
             publication-evidence.json
             skopeo-version.txt
+            tool-versions.json
           retention-days: 30
           if-no-files-found: warn
