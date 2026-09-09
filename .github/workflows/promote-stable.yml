@@ -55,6 +55,9 @@ jobs:
     name: Promote ${{ matrix.framework }}
     if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    # Observado: 11-40s num run real contra o ECR de verdade (M14). Margem
+    # cobre o re-scan Trivy e variância de rede nas chamadas AWS/ECR.
+    timeout-minutes: 10
     # Mesmo grupo em dispatch direto e workflow_call: seleção e push serializados.
     concurrency:
       group: promote-stable-${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}-${{ inputs.aws-region || vars.AWS_REGION }}-${{ matrix.framework }}

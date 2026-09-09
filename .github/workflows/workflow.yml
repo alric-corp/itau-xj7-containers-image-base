@@ -45,6 +45,14 @@ permissions:
 jobs:
   validate-pr:
     if: github.event_name == 'pull_request'
+    # M14: um novo commit no mesmo PR cancela a validação obsoleta (apko +
+    # Trivy, sem AWS) em vez de rodar as duas até o fim; PRs diferentes têm
+    # grupos diferentes e não se cancelam. Grupo próprio, nunca compartilhado
+    # com build-base-images/promote-stable abaixo — esses nunca podem ser
+    # cancelados por um PR/build novo.
+    concurrency:
+      group: validate-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     uses: ./.github/workflows/validate-base-images.yml
     with:
       frameworks: '["java21", "java21-dev", "java25", "python3-13", "python3-14", "go1-25", "go1-26", "go1-26-dev", "nodejs22", "nodejs24", "nodejs22-dev", "nodejs24-dev", "dotnet8", "dotnet10", "dotnet10-dev"]'
