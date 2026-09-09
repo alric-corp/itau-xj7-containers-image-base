@@ -1,3 +1,5 @@
+# Teste real M05: confirma que um PR não consegue autenticar na AWS via OIDC
+# (trust policy restrita a ref:refs/heads/main). Reverter após o teste.
 .DEFAULT_GOAL := help
 
 UNAME_ARCH := $(shell uname -m)
