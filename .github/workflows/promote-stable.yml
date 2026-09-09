@@ -97,7 +97,8 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           python3 .github/scripts/find_promotion_candidate.py \
-            images.json "${{ inputs.soak-hours }}" "$REGISTRY" "image-base-${FRAMEWORK}"
+            images.json "${{ inputs.soak-hours }}" "$REGISTRY" "image-base-${FRAMEWORK}" \
+            .github/promotion-quarantine.json
 
       # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
       # relação ao momento do build original — é aqui que uma CVE divulgada
