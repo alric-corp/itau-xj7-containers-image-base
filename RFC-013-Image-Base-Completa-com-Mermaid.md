@@ -202,6 +202,7 @@ Referências verificadas: [cache, escopo e proteção contra poisoning](https://
 
 - [x] Validação local de inputs (catálogo, duplicados, traversal/injeção e soak finito não negativo) antes das etapas AWS; checkouts sem credenciais persistidas; coletor de versões por fase para os artifacts.
 - [x] Configuração de atualização de digests preparada em `renovate.json`, sem automerge e sem alterar pins nesta entrega; autoria principal Codex, solicitada pelo mantenedor, documentada em `AGENTS.md`.
+- [x] **CI real do commit `8f64de1` (primeira parte):** [checks rápidos](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34396480166) aprovados; [build/scan](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34396480594) aprovou bundle e 14/15 frameworks, incluindo os seis do M07. Apenas `dotnet8` bloqueado no scan; publicação/promoção corretamente não executadas no PR.
 - [x] Segunda parte: branch trazida para a `main` atual (já com M13/M14/M15) e endurecimento completado — `recover-stable.yml` incluído, guard de digest, fim da interpolação de input dentro de `run` nos jobs privilegiados e as regras viradas lint no check obrigatório. Detalhe no item M16 acima.
 - [ ] Ativação e primeiro PR real do Renovate; publicação/promoção autenticadas da implementação; revisão dos PRs Dependabot. M09 permanece parcial: registrar versão não é atualizar.
 

@@ -127,6 +127,21 @@ identidade Git do operador permanece como committer, sem configuração global
 alterada. Autoria não confere acesso ao repo, assinatura verificada nem
 endosso da OpenAI. Não reescrever histórico anterior.
 
+## CI real
+
+- Primeira parte, commit `8f64de1`: [checks rápidos](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34396480166)
+  aprovados e [build/scan](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34396480594)
+  com bundle e 14/15 frameworks aprovados, incluindo os seis pares
+  runtime/dev do M07. Único bloqueado: `dotnet8`, no scan. Publicação e
+  promoção não executam em PR, por desenho.
+- Segunda parte: [run 34412945439](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34412945439),
+  `test` e `lint-workflows` aprovados, com o step `Workflow hardening rules`
+  `success` no runner — o lint novo roda de verdade no check obrigatório, não
+  só localmente.
+- A API do GitHub retornou `author.login: codex` para o commit `8f64de1`,
+  confirmando o vínculo da autoria da primeira parte ao perfil
+  https://github.com/codex.
+
 ## Validação local
 
 - 81 testes de pipeline e 13 de certificados aprovados. Novos nesta parte:
