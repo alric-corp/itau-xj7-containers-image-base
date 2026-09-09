@@ -23,7 +23,7 @@ permissions:
   artifact-metadata: write  # storage record da attestation (evita o warning "Failed to persist storage record")
 
 env:
-  SKOPEO_IMAGE: quay.io/skopeo/stable@sha256:db4108427c05acbadd1447316caa9b5f097a9a737d897d2297443baedff37ded
+  SKOPEO_IMAGE: quay.io/skopeo/stable@sha256:b9ca6a549aa71990d50ab390a8bddf606a6689379026aa24e7f4f70b5a43fbcd
 
 jobs:
   validate:
@@ -58,6 +58,11 @@ jobs:
           set -eu
           DIGEST=$(python3 -B .github/scripts/oci_artifact.py verify image.oci)
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Verify pinned Skopeo is available
+        run: |
+          set -euo pipefail
+          docker run --rm --pull=always "$SKOPEO_IMAGE" --version | tee skopeo-version.txt
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
@@ -175,5 +180,6 @@ jobs:
             published.digest
             published-index.json
             publication-evidence.json
+            skopeo-version.txt
           retention-days: 30
           if-no-files-found: warn
