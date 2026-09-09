@@ -1,13 +1,23 @@
-# Boilerplate only: ownership rules are intentionally inactive for this POC.
-# Containers Products owns the distroless image build and certificate updates.
-# To activate, grant the team write access and uncomment the rules below.
-# Configure required code-owner reviews separately once another team member
-# can review the author's pull requests. For production, use the verified
-# itau-corp team slug instead of the POC owner.
-# /melange/** @alric-corp/github_xj7_maintainer
-# /Makefile @alric-corp/github_xj7_maintainer
-# /.github/workflows/** @alric-corp/github_xj7_maintainer
-# /.github/scripts/** @alric-corp/github_xj7_maintainer
-# /scripts/** @alric-corp/github_xj7_maintainer
-# /tests/** @alric-corp/github_xj7_maintainer
-# /.github/CODEOWNERS @alric-corp/github_xj7_maintainer
+# Ownership ativo (M16). Estas regras só passam a valer depois que este
+# arquivo estiver na main: o GitHub lê o CODEOWNERS da branch base do PR,
+# não o da branch do PR. E só valem porque a proteção correspondente existe
+# de verdade — o time @alric-corp/github_xj7_maintainer recebeu acesso de
+# escrita a este repositório e a branch protection da main exige revisão de
+# code owner. Um CODEOWNERS sem essas duas condições é decorativo: dono sem
+# permissão de escrita é ignorado pelo GitHub, e sem revisão obrigatória
+# ninguém precisa aprovar.
+#
+# @vigcf entra como dono adicional para que a regra seja satisfazível: o
+# time tem um membro só, e um autor não aprova o próprio PR (enforce_admins
+# está ligado, admin também não contorna).
+#
+# Para produção, trocar o dono da POC pelo slug verificado do time itau-corp.
+
+/melange/**              @alric-corp/github_xj7_maintainer @vigcf
+/Makefile                @alric-corp/github_xj7_maintainer @vigcf
+/.github/workflows/**    @alric-corp/github_xj7_maintainer @vigcf
+/.github/actions/**      @alric-corp/github_xj7_maintainer @vigcf
+/.github/scripts/**      @alric-corp/github_xj7_maintainer @vigcf
+/scripts/**              @alric-corp/github_xj7_maintainer @vigcf
+/tests/**                @alric-corp/github_xj7_maintainer @vigcf
+/.github/CODEOWNERS      @alric-corp/github_xj7_maintainer @vigcf

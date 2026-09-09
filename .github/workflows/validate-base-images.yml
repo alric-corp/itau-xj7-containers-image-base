@@ -27,11 +27,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow inputs before privileged operations
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+        run: python3 -B .github/scripts/validate_inputs.py
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
         with:
           platforms: arm64
+
+      - name: Record melange version
+        run: docker run --rm "$MELANGE_IMAGE" version > melange/melange-version.txt
 
       - name: Generate ephemeral melange signing key
         working-directory: melange
@@ -58,6 +68,7 @@ jobs:
           path: |
             melange/packages/
             melange/melange.rsa.pub
+            melange/melange-version.txt
           retention-days: 1
 
   validate:
@@ -75,6 +86,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install pinned apko
         run: |
@@ -109,14 +122,28 @@ jobs:
           python3 -B .github/scripts/oci_artifact.py prepare "${FRAMEWORK}.oci"
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: ${{ env.TRIVY_VERSION }}
+
+      - name: Record validation tool versions
+        run: python3 -B .github/scripts/tool_versions.py validation reports/tool-versions.json
 
       - name: Scan both architectures
         env:
           FRAMEWORK: ${{ matrix.framework }}
         run: python3 -B .github/scripts/scan_images.py oci "${FRAMEWORK}.oci"
+
+      # M11: o gate acima usa --ignore-unfixed de propósito (bloquear por
+      # algo que ninguém pode corrigir ainda não ajuda) — mas isso deixa
+      # CVEs sem correção completamente invisíveis. Este passo é só
+      # visibilidade: nunca falha o job, roda mesmo se o scan acima já
+      # bloqueou, e nunca esconde a causa real de um bloqueio.
+      - name: Report CVEs without an available fix (informational)
+        if: always()
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: python3 -B .github/scripts/report_unfixed_cves.py oci "${FRAMEWORK}.oci"
 
       - name: Preserve scan evidence
         if: ${{ !cancelled() }}
