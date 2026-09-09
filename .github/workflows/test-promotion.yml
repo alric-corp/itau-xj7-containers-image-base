@@ -29,9 +29,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # Observado: ~24s num run real (M14).
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Deliberately exceed one-minute job timeout (M14 acceptance)
+        run: python3 -u -c 'import time; print("M14 timeout probe started"); time.sleep(180)'
       - name: Test image pipeline scripts
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
       - name: Test certificate verification without AWS
