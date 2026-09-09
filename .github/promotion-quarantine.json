@@ -1,4 +1,11 @@
 {
   "_comment": "M15: digests retirados de 'stable' por recover-stable.yml. Sem uma entrada aqui, o próximo ciclo de promoção selecionaria de novo o build mais recente por timestamp, desfazendo a recuperação. Cada entrada some quando um build mais novo E aprovado é promovido de verdade (nesse ponto o timestamp de 'stable' já avança e a exclusão explícita deixa de ser necessária) — remover a entrada nesse momento, via PR normal.",
-  "image-base-go1-26": []
+  "image-base-go1-26": [
+    {
+      "digest": "sha256:b2e2422f6dd093a056e272a76dc21305f0d21c1862f8ca265e57fa5ce3203240",
+      "reason": "recuperação: Teste real M15: simulação de rollback para validar o runbook de recuperação",
+      "added_by": "TomasAlric",
+      "added_at": "2026-09-09T21:20:34Z"
+    }
+  ]
 }
