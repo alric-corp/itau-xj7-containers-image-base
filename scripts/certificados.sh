@@ -30,7 +30,8 @@
 #       (re)escreve o lockfile com os hashes correntes. Não gera bundles.
 #       Serve pra propor uma atualização — revisar o diff do lockfile
 #       (quais arquivos mudaram, hash antigo vs novo) num PR, com
-#       confirmação da equipe de PKI, antes do merge.
+#       confirmação do time responsável (Containers Products), antes do
+#       merge.
 #
 #       IMPORTANTE: --pin sempre aceita o que está em S3 agora como novo
 #       baseline. Antes de rodar --pin de novo (inclusive ao retomar testes
@@ -64,7 +65,7 @@ EXPECTED_FILES="ca_bundle.crt caitau.cer cloud-s0653.cer itau-r0650.cer itau-s01
 
 check_dependencies() {
   local missing=""
-  for cmd in aws curl jq openssl sha256sum date; do
+  for cmd in aws curl jq openssl sha256sum date grep; do
     command -v "$cmd" >/dev/null 2>&1 || missing="$missing $cmd"
   done
   if [ -n "$missing" ]; then
@@ -113,6 +114,14 @@ if [ "$PIN" = false ] && [ -z "$CAMINHO" ]; then
   exit 2
 fi
 
+# Resolve pra caminho absoluto ANTES de qualquer `cd`. Sem isso, um
+# --lockfile relativo é lido corretamente na checagem de completude (roda
+# no diretório de invocação) mas procurado no lugar errado quando
+# `sha256sum -c` roda dentro de `(cd "$STAGING" && ...)` — mesmo nome,
+# dois diretórios diferentes, dois resultados diferentes.
+LOCKFILE_DIR="$(cd "$(dirname "$LOCKFILE")" && pwd)"
+LOCKFILE="$LOCKFILE_DIR/$(basename "$LOCKFILE")"
+
 CURL="curl --fail --show-error --silent --location --max-time 30 --retry 3 --retry-delay 2"
 
 STAGING="$(mktemp -d)"
@@ -144,7 +153,12 @@ validate_pem_bundle() {
   local bundle_file="$1" label="$2" metadata_file="${3:-}"
   local count=0 in_block=0 tmp_cert startdate start_epoch now_epoch
   tmp_cert="$(mktemp)"
-  while IFS= read -r line; do
+  # `|| [ -n "$line" ]` é necessário: sem isso, a última linha de um arquivo
+  # sem newline final nunca entra no corpo do loop (read retorna != 0 no
+  # EOF mesmo tendo lido conteúdo) — um certificado válido cujo END não
+  # tenha newline final seria rejeitado, e um fragmento BEGIN sem newline
+  # final ficaria invisível ao parser (passando batido).
+  while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       "-----BEGIN CERTIFICATE-----")
         if [ "$in_block" -eq 1 ]; then
@@ -212,31 +226,35 @@ validate_pem_bundle() {
   fi
 }
 
-# No --pin, gera também um arquivo de metadados legível por humano ao lado
-# do lockfile (mesmo nome, sufixo .metadata.txt) — o hash sozinho não diz
-# nada sobre o que de fato mudou; subject/issuer/validade/fingerprint é o
-# que torna o diff do PR revisável de verdade.
+# Gera um arquivo de metadados legível por humano (subject/issuer/
+# validade/fingerprint por certificado) SEMPRE, nos dois modos — não só no
+# --pin. Isso é o que torna um diff de PR revisável de verdade (hash
+# sozinho não diz nada sobre o que mudou), e recomputá-lo em toda execução
+# de verificação (não só ao aprovar) é o que permite detectar se o arquivo
+# de metadados foi adulterado ou ficou desatualizado em relação ao que
+# está de fato aprovado.
 METADATA_FILE="${LOCKFILE%.sha256}.metadata.txt"
-if [ "$PIN" = true ]; then
-  METADATA_STAGING="$STAGING/metadata.new"
-  : > "$METADATA_STAGING"
-  for f in $EXPECTED_FILES; do
-    validate_pem_bundle "$STAGING/$f" "$f" "$METADATA_STAGING"
-  done
-else
-  for f in $EXPECTED_FILES; do
-    validate_pem_bundle "$STAGING/$f" "$f"
-  done
-fi
+METADATA_STAGING="$STAGING/metadata.new"
+: > "$METADATA_STAGING"
+for f in $EXPECTED_FILES; do
+  validate_pem_bundle "$STAGING/$f" "$f" "$METADATA_STAGING"
+done
 
 if [ "$PIN" = true ]; then
-  (cd "$STAGING" && sha256sum $EXPECTED_FILES) > "$LOCKFILE"
+  # Lockfile vai pra um arquivo de staging primeiro, e só é copiado por
+  # cima do real DEPOIS que os metadados já tiverem sido gravados com
+  # sucesso. Com set -e, se a gravação dos metadados falhar, o script sai
+  # aqui e o lockfile real nunca é tocado — evita ficar com hash novo e
+  # metadados antigos (ou vice-versa) por causa de uma falha no meio do
+  # --pin.
+  (cd "$STAGING" && sha256sum $EXPECTED_FILES) > "$STAGING/lockfile.new"
   cp "$METADATA_STAGING" "$METADATA_FILE"
+  cp "$STAGING/lockfile.new" "$LOCKFILE"
   echo "Lockfile atualizado em $LOCKFILE." >&2
   echo "Metadados legíveis atualizados em $METADATA_FILE." >&2
   echo "Revise quais arquivos/certificados mudaram (git diff em ambos)," >&2
-  echo "confirme a rotação com a equipe de PKI, e abra um PR — não aplique" >&2
-  echo "isso direto em produção." >&2
+  echo "confirme a rotação com o time responsável (Containers Products)," >&2
+  echo "e abra um PR — não aplique isso direto em produção." >&2
   exit 0
 fi
 
@@ -260,10 +278,45 @@ if [ "$LOCKFILE_ENTRIES" != "$EXPECTED_SORTED" ]; then
   exit 3
 fi
 
+# sha256sum -c trata uma linha malformada como AVISO, não erro — ela
+# simplesmente não é conferida, e o comando ainda sai com 0 se todas as
+# OUTRAS linhas baterem. Isso permite que uma entrada com hash inválido
+# (ex.: "INVALID  caitau.cer") passe sem que aquele certificado específico
+# seja verificado contra nada. Exigimos o formato exato de cada linha
+# antes de confiar no sha256sum pra fazer a comparação.
+while IFS= read -r lockline; do
+  [ -n "$lockline" ] || continue
+  if ! printf '%s\n' "$lockline" | grep -qE '^[0-9a-f]{64}  [^[:space:]]'; then
+    echo "ERRO: linha malformada no lockfile (esperado 64 hex minúsculos + dois espaços + nome do arquivo): $lockline" >&2
+    exit 3
+  fi
+done < "$LOCKFILE"
+
 if ! (cd "$STAGING" && sha256sum -c "$LOCKFILE") >&2; then
   echo "ERRO: um ou mais certificados não batem com o manifesto aprovado ($LOCKFILE)." >&2
   echo "Pode ser uma rotação legítima (revisar e rodar --pin) ou uma fonte" >&2
   echo "comprometida (S3 ou distribuição Mozilla). Nenhum bundle foi gerado." >&2
+  exit 1
+fi
+
+# O SHA-256 do lockfile só garante integridade dos certificados — nada
+# aqui verificava o arquivo de metadados até agora. Um metadata.txt
+# adulterado (ex.: subject/issuer trocados por texto sem relação nenhuma
+# com os certificados reais) passava batido, porque nada comparava seu
+# conteúdo com nada. Recomputamos os metadados a partir dos MESMOS bytes
+# já verificados por hash (METADATA_STAGING) e exigimos que batam
+# byte-a-byte com o que está commitado — se um reviewer aprovou um PR
+# olhando pro metadata.txt, esse é o mesmo texto que devia estar aqui.
+if [ ! -s "$METADATA_FILE" ]; then
+  echo "ERRO: metadados $METADATA_FILE ausentes ou vazios." >&2
+  echo "Rode 'certificados.sh --pin' para gerá-los junto com o lockfile." >&2
+  exit 3
+fi
+if ! diff -q "$METADATA_STAGING" "$METADATA_FILE" >/dev/null 2>&1; then
+  echo "ERRO: metadados ($METADATA_FILE) divergem do que seria gerado a partir" >&2
+  echo "dos certificados já verificados pelo hash acima. Foram editados" >&2
+  echo "manualmente, corrompidos, ou ficaram desatualizados em relação ao" >&2
+  echo "lockfile aprovado. Nenhum bundle foi gerado." >&2
   exit 1
 fi
 
