@@ -1,8 +1,10 @@
 # M09/M16: ferramentas e fronteiras de confiança
 
-Primeira parte preparada sobre `97c3cb4` (M12, PR #19); esta versão traz a
-branch para a `main` atual (`432da4e`, já com M13/M14/M15) e completa o M16.
-Não altera identidades de assinatura, trust policy AWS, Environments nem o
+Primeira parte preparada sobre `97c3cb4` (M12, PR #19); trazida depois para
+a `main` de então (`432da4e`, já com M13/M14/M15) e novamente, após uma
+revisão externa, para a `main` atual (`81c8f4e`, com os bumps do Dependabot
+em `aquasecurity/setup-trivy`, `actions/cache` e `actions/setup-node`). Não
+altera identidades de assinatura, trust policy AWS, Environments nem o
 workflow gerado de triagem.
 
 ## Implementação
@@ -111,22 +113,50 @@ Detalhes que mudam a leitura desses controles:
 - [x] Checks não precisam de credencial Git persistida: `test` e
   `lint-workflows` rodam com `persist-credentials: false` e o lint reprova
   qualquer checkout novo que esqueça a opção.
+- [x] Entradas inválidas falham antes da AWS **num dispatch real**, não só
+  em teste local: ver "Dispatch real com entrada inválida" abaixo.
 - [ ] Proteção de revisão demonstrada em PR de teste: a configuração está
-  ativa e este PR já cai nela; falta registrar a evidência do bloqueio real
-  (tentativa de merge sem aprovação) e, depois do merge, de um PR tocando
-  `.github/workflows/**` exigindo revisão de code owner.
+  ativa e bloqueia de fato esta PR (`reviewDecision: REVIEW_REQUIRED`,
+  `mergeStateStatus: BLOCKED`, com `test`/`lint-workflows` `pass`) — mas isso
+  comprova só a regra genérica de aprovação. Falta o PR **pós-merge** tocando
+  `.github/workflows/**` que comprove a exigência específica de code owner,
+  porque o GitHub avalia CODEOWNERS pela branch base: até esta PR mesclar,
+  qualquer PR ainda cai no CODEOWNERS inerte da `main`. **Bloqueado em
+  aprovação humana:** esta PR só pode mesclar com aprovação de outro
+  administrador do repositório (`vigcf`) — o autor (`TomasAlric`) não pode
+  aprovar o próprio PR, e `enforce_admins: true` não permite contornar isso.
 - [ ] Ativar Renovate com acesso somente a este repositório e comprovar o
   primeiro PR real de digest, incluindo atualização consistente de todas as
   ocorrências, disponibilidade multi-arch, lint/build/scan e revisão humana.
 - [ ] Validar as alterações em publicação/promoção autenticadas e conferir os
   artifacts com versões e ausência de credenciais persistidas.
-- [ ] Testar fork (pertence ao M05), inputs inválidos num dispatch real e
-  falhas/cancelamentos conforme os demais critérios. O job com permissão OIDC
-  continua autorizado a obter tokens; o guard impede chegar ao passo AWS com
-  input inválido, não constitui uma nova fronteira de IAM.
+- [ ] Testar fork (pertence ao M05) e falhas/cancelamentos conforme os
+  demais critérios. O job com permissão OIDC continua autorizado a obter
+  tokens; o guard impede chegar ao passo AWS com input inválido, não
+  constitui uma nova fronteira de IAM.
 - [ ] Decidir política/automação de versões Trivy/cosign além dos pins das
   Actions e acompanhar os PRs Dependabot. Registro de versão não é
   atualização. M09 permanece parcial.
+
+## Dispatch real com entrada inválida
+
+Dois `workflow_dispatch` reais de `recover-stable.yml` na branch desta PR,
+depois do merge com a `main` atual:
+
+- [Run 34415174826](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34415174826):
+  `framework=../frameworks/go1-26` (fora do catálogo, mesmo traversal que a
+  checagem antiga em shell aceitava).
+- [Run 34415195003](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34415195003):
+  `framework=go1-26` válido, `digest=sha256:not-a-real-digest` malformado.
+
+Os dois falharam no passo `Validate inputs before privileged operations` com
+a mensagem exata `"Invalid workflow inputs: use unique framework names from
+the catalog, a finite nonnegative soak and a sha256:<64 hex> digest."` — e
+`Configure AWS credentials (OIDC)` e todos os passos seguintes aparecem como
+`skipped` no job, confirmando que a autenticação AWS nunca foi tentada.
+Nenhum dispatch com input válido foi executado como controle: o próximo passo
+do workflow depois do guard já reescreveria `stable` de um repositório real
+(`docker buildx imagetools create`), o que exigiria autorização separada.
 
 ## Autoria solicitada pelo mantenedor
 
