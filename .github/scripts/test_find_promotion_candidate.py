@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from find_promotion_candidate import select_candidate
+from find_promotion_candidate import select_candidate, load_quarantined_digests
 
 
 NOW = datetime.datetime(2026, 9, 8, 9, tzinfo=datetime.timezone.utc)
@@ -116,6 +116,59 @@ class CandidateTests(unittest.TestCase):
     def test_stable_without_build_tag_still_prevents_rollback(self):
         stable = image(tag="stable", hours=8)
         self.assertIsNone(self.select([stable, image(hours=12, digest="sha256:old")]))
+
+    def test_quarantined_digest_is_excluded_even_when_otherwise_eligible(self):
+        newer = image(hours=7, digest="sha256:bad")
+        older = image(hours=9, digest="sha256:good")
+        self.assertEqual(
+            select_candidate([newer, older], 6, NOW, frozenset({"sha256:bad"}))[2],
+            "sha256:good",
+        )
+        # Sem nada elegível além do quarentenado, o resultado é skip (None).
+        self.assertIsNone(select_candidate([newer], 6, NOW, frozenset({"sha256:bad"})))
+
+    def test_quarantine_does_not_affect_unrelated_digests(self):
+        candidate = image(hours=8, digest="sha256:build")
+        self.assertEqual(
+            select_candidate([candidate], 6, NOW, frozenset({"sha256:unrelated"}))[2],
+            "sha256:build",
+        )
+
+    def test_load_quarantined_digests_missing_file_returns_empty(self):
+        self.assertEqual(load_quarantined_digests("/nonexistent/path.json", "image-base-go1-26"),
+                          frozenset())
+
+    def test_load_quarantined_digests_filters_by_repo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "quarantine.json"
+            path.write_text(json.dumps({
+                "image-base-go1-26": [{"digest": "sha256:aaa", "reason": "x"}],
+                "image-base-java21": [{"digest": "sha256:bbb", "reason": "y"}],
+            }))
+            self.assertEqual(load_quarantined_digests(str(path), "image-base-go1-26"),
+                              frozenset({"sha256:aaa"}))
+            self.assertEqual(load_quarantined_digests(str(path), "image-base-python3-13"),
+                              frozenset())
+
+    def test_cli_quarantine_argument_excludes_digest(self):
+        script = Path(__file__).with_name("find_promotion_candidate.py")
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "images.json"
+            output = Path(directory) / "output"
+            quarantine = Path(directory) / "quarantine.json"
+            details = [image(digest="sha256:build")]
+            details[0]["imagePushedAt"] = "2020-01-01T00:00:00+00:00"
+            source.write_text(json.dumps({"imageDetails": details}))
+            quarantine.write_text(json.dumps({"test": [{"digest": "sha256:build"}]}))
+            output.write_text("")
+            result = subprocess.run(
+                [sys.executable, "-B", str(script), str(source), "6",
+                 "example.invalid", "test", str(quarantine)],
+                env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output.read_text().strip(), "skip=true")
 
     def test_cli_github_output_contract(self):
         script = Path(__file__).with_name("find_promotion_candidate.py")

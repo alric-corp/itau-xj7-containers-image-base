@@ -56,4 +56,5 @@ jobs:
             .github/workflows/validate-base-images.yml \
             .github/workflows/promote-stable.yml \
             .github/workflows/workflow.yml \
-            .github/workflows/test-promotion.yml
+            .github/workflows/test-promotion.yml \
+            .github/workflows/recover-stable.yml

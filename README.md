@@ -15,6 +15,7 @@ Imagens base **distroless multi-arquitetura** (`amd64`/`arm64`) para **Java, Pyt
   - [O pacote `bundle-pem-test` (melange)](#o-pacote-bundle-pem-test-melange)
   - [Pipeline de CI/CD (GitHub Actions)](#pipeline-de-cicd-github-actions)
   - [Gate de promoção para stable (canário de soak)](#gate-de-promoção-para-stable-canário-de-soak)
+  - [Recuperação de stable (runbook, M15)](#recuperação-de-stable-runbook-m15)
   - [Verificação: assinatura e build provenance](#verificação-assinatura-e-build-provenance)
   - [Configuração dos workflows reusáveis](#configuração-dos-workflows-reusáveis)
   - [Build local](#build-local)
@@ -291,6 +292,21 @@ python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 ```
 
 **SLA de patch em definição (ver M04/M11 da RFC-013):** o rebuild diário depende da correção estar disponível no Wolfi. Com a promoção horária, um build publicado às 03:20 UTC completa o soak às 09:20 UTC e poderá ser avaliado às 10:17 UTC. A espera nominal após o soak é inferior a uma hora, mas atrasos do scheduler, filas e falhas dos jobs impedem tratá-la como garantia. O SLA será formalizado com medições ponta a ponta. O build publicado pode ser consumido antes da promoção, assumindo explicitamente que ainda não passou pelo gate de `stable`.
+
+## Recuperação de `stable` (runbook, M15)
+
+Se um build promovido apresentar problema depois da promoção (ex.: CVE divulgada após o soak, comportamento inesperado reportado por um consumidor), `recover-stable.yml` restaura `stable` para um digest anterior já aprovado — sem rebuild, sem bypass do gate de segurança:
+
+1. **Escolher o digest de destino.** Precisa ser um build já publicado no repositório (`aws ecr describe-images --repository-name image-base-<framework>`) — nunca um digest arbitrário. Idealmente um build que já foi `stable` antes.
+2. **Disparar o workflow** (Actions → "Recover stable to a previous digest" → Run workflow) com `framework`, `digest` (`sha256:...`) e `reason`. O job:
+   - confirma que o digest existe no repositório;
+   - reverifica plataformas (amd64+arm64), assinatura cosign e provenance GitHub com a **mesma política** de `promote-stable.yml` — um digest antigo que não passe nessa verificação não é restaurado;
+   - reescaneia as duas arquiteturas com o banco de CVE atual — uma CVE nova no digest antigo bloqueia a recuperação; correção do gate por exceção exige política explícita, não esse workflow;
+   - move `stable` com `docker buildx imagetools create` (mesmo mecanismo da promoção normal, sem rebuild) e confirma por leitura de volta independente;
+   - grava um `recovery-evidence.json` (operador = `github.actor`, motivo, digest anterior/novo, run) como artifact.
+3. **Abrir um PR** adicionando o digest retirado a `.github/promotion-quarantine.json` (o job imprime o trecho JSON pronto pra colar). Sem isso, o build retirado continua sendo o mais recente por timestamp em `find_promotion_candidate.py`, e o próximo ciclo de promoção o selecionaria de novo — desfazendo a recuperação. A entrada de quarentena some quando um build mais novo e aprovado for promovido de verdade (a partir daí o timestamp de `stable` já avança e a exclusão explícita deixa de ser necessária).
+
+A recuperação e uma promoção concorrente do mesmo framework compartilham o grupo de concorrência de `promote-stable.yml` — nunca correm ao mesmo tempo. Restaurar a imagem base **não** reconstrói nem reverte automaticamente aplicações consumidoras; isso é responsabilidade do runbook de deploy de cada time.
 
 ## Verificação: assinatura e build provenance
 
