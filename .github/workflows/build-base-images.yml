@@ -14,6 +14,7 @@ on:
       frameworks:
         description: "JSON array de frameworks a buildar (deve casar com um arquivo em frameworks/<nome>.yaml)."
         type: string
+        required: true
 
 permissions:
   id-token: write           # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
@@ -22,62 +23,20 @@ permissions:
   artifact-metadata: write  # storage record da attestation (evita o warning "Failed to persist storage record")
 
 env:
-  # Tool versions/images centralizados aqui para não precisar caçar em cada passo.
-  #
-  # APKO_VERSION / MELANGE_VERSION são apenas informativos: o registro público
-  # da Chainguard só publica a tag ":latest" (tags com versão são recurso pago
-  # do Chainguard Images), então APKO_IMAGE/MELANGE_IMAGE abaixo sempre puxam
-  # o mais recente. Atualize esses dois comentários manualmente sempre que
-  # conferir `./apko version` / `melange version`.
-  APKO_VERSION: v1.2.19      # cgr.dev/chainguard/apko:latest em 2026-07-01
-  MELANGE_VERSION: v0.55.0   # cgr.dev/chainguard/melange:latest em 2026-07-01
-  APKO_IMAGE: cgr.dev/chainguard/apko:latest
-  MELANGE_IMAGE: cgr.dev/chainguard/melange:latest
-  TRIVY_VERSION: v0.72.0
+  SKOPEO_IMAGE: quay.io/skopeo/stable@sha256:db4108427c05acbadd1447316caa9b5f097a9a737d897d2297443baedff37ded
 
 jobs:
-  # Builda o pacote melange/bundle-pem-test.yaml uma vez e compartilha com
-  # todos os builds de framework abaixo via artifact, evitando rebuild 4x.
-  # Usa chave de assinatura efêmera: só a chave pública viaja para o job
-  # build-push, o suficiente para o apko validar o repositório local.
-  melange-bundle:
-    name: Compile certs with melange
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
-
-      - name: Generate ephemeral melange signing key
-        working-directory: melange
-        run: |
-          docker run --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
-            keygen melange.rsa
-
-      - name: Build bundle-pem-test package (amd64 + arm64)
-        working-directory: melange
-        run: |
-          docker run --privileged --rm -v "$PWD":/work -w /work "$MELANGE_IMAGE" \
-            build bundle-pem-test.yaml \
-            --arch x86_64,aarch64 \
-            --signing-key melange.rsa
-
-      - name: Upload melange repository
-        uses: actions/upload-artifact@v7
-        with:
-          name: melange-repo
-          path: |
-            melange/packages/
-            melange/melange.rsa.pub
-          retention-days: 1
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/validate-base-images.yml
+    with:
+      frameworks: ${{ inputs.frameworks }}
 
   build-push:
     name: Build & push ${{ matrix.framework }}
-    needs: melange-bundle
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: validate
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -85,17 +44,30 @@ jobs:
         framework: ${{ fromJSON(inputs.frameworks) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download validated OCI artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: validated-oci-${{ matrix.framework }}
+          path: image.oci
+
+      - name: Verify artifact integrity and platforms
+        id: verified
+        run: |
+          set -eu
+          DIGEST=$(python3 -B .github/scripts/oci_artifact.py verify image.oci)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
           role-to-assume: ${{ inputs.aws-role-arn }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
       # ECR não cria repositório automaticamente no primeiro push (diferente
       # do Docker Hub) — garante que ele existe antes do apko publicar.
@@ -105,31 +77,20 @@ jobs:
         run: |
           set -eu
           REPO="image-base-${FRAMEWORK}"
-          aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1 || \
+          if ! aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>ecr-error.txt; then
+            if ! grep -q 'RepositoryNotFoundException' ecr-error.txt; then
+              cat ecr-error.txt >&2
+              exit 1
+            fi
             aws ecr create-repository \
               --repository-name "$REPO" \
-              --image-tag-mutability MUTABLE \
+              --image-tag-mutability IMMUTABLE_WITH_EXCLUSION \
+              --image-tag-mutability-exclusion-filters filterType=WILDCARD,filter=stable \
               --image-scanning-configuration scanOnPush=true >/dev/null
-
-      # apko é extraído como binário nativo (em vez de rodar via `docker run`)
-      # para reaproveitar as credenciais que o passo de login no ECR já
-      # escreveu em ~/.docker/config.json, sem precisar montar volume para
-      # simular o $HOME de um container. APKO_IMAGE (":latest" por padrão,
-      # ver env do workflow) mantém sempre a última versão estável do apko.
-      - name: Install apko (latest stable)
-        run: |
-          set -eu
-          docker create --name apko-extract "$APKO_IMAGE"
-          docker cp apko-extract:/usr/bin/apko ./apko
-          docker rm apko-extract
-          chmod +x ./apko
-          ./apko version
-
-      - name: Download melange repository
-        uses: actions/download-artifact@v8
-        with:
-          name: melange-repo
-          path: melange-repo
+          fi
+          aws ecr put-image-tag-mutability --repository-name "$REPO" \
+            --image-tag-mutability IMMUTABLE_WITH_EXCLUSION \
+            --image-tag-mutability-exclusion-filters filterType=WILDCARD,filter=stable >/dev/null
 
       # Referência da imagem: <registry-ecr>/image-base-<framework>, com uma
       # tag imutável <ddmmaa-hhmm> (GMT-3 / America/Sao_Paulo). A tag "stable"
@@ -143,65 +104,38 @@ jobs:
         run: |
           set -eu
           echo "IMAGE_NAME=${REGISTRY}/image-base-${FRAMEWORK}" >> "$GITHUB_ENV"
-          echo "TIMESTAMP_TAG=$(TZ='America/Sao_Paulo' date +%d%m%y-%H%M)" >> "$GITHUB_ENV"
+          echo "TIMESTAMP_TAG=$(TZ='America/Sao_Paulo' date +%d%m%y-%H%M)-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
 
-      # Build local-only (sem tocar em nenhum registry) para que a imagem
-      # possa ser escaneada antes de qualquer coisa ser publicada. Builds do
-      # apko são reprodutíveis, então o digest que o `apko publish` sobe
-      # depois é bit-a-bit idêntico ao que foi escaneado aqui.
-      - name: Build image for each architecture (local validation)
-        run: |
-          set -eu
-          declare -A ARCH_MAP=( [x86_64]=amd64 [aarch64]=arm64 )
-          for APKO_ARCH in x86_64 aarch64; do
-            OCI_ARCH="${ARCH_MAP[$APKO_ARCH]}"
-            echo "Building ${IMAGE_NAME} for ${APKO_ARCH}"
-            ./apko build \
-              --arch "$APKO_ARCH" \
-              --repository-append melange-repo/packages \
-              --keyring-append melange-repo/melange.rsa.pub \
-              "frameworks/${{ matrix.framework }}.yaml" "${IMAGE_NAME}" "${{ matrix.framework }}-${OCI_ARCH}.tar"
-            docker load < "${{ matrix.framework }}-${OCI_ARCH}.tar"
-          done
-
-      # Falha em qualquer severidade (CRITICAL/HIGH/MEDIUM/LOW) que já tenha
-      # correção disponível upstream. `ignore-unfixed` evita que uma CVE sem
-      # fix ainda publicado pelo Wolfi trave a publicação indefinidamente —
-      # sem isso, o rebuild diário (que existe justamente para aplicar
-      # patches) poderia travar por causa de algo que nem o upstream
-      # conseguiu corrigir ainda.
-      - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: "${{ env.IMAGE_NAME }}:latest-amd64"
-          format: table
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          ignore-unfixed: true
-          exit-code: "1"
-          version: ${{ env.TRIVY_VERSION }}
-
-      # Só chega aqui se o scan acima passou. Publica SÓ a tag imutável —
-      # "stable" não é tocada aqui, ela é promovida separadamente pelo
-      # workflow promote-stable.yml depois da janela de soak.
-      #
-      # apko publish escreve a referência completa da imagem publicada
-      # (registro/repo@sha256:...) na última linha do stdout — não só o
-      # digest sozinho (confirmado num run real). Guardamos os dois: a
-      # referência completa (pra cosign) e só o digest depois do "@" (pra
-      # attest-build-provenance, que quer subject-name e subject-digest
-      # separados).
-      - name: Publish immutable image (multi-arch)
+      # Copia os mesmos manifests e layers validados; nenhuma resolução de pacotes.
+      - name: Publish validated OCI artifact (multi-arch)
         id: publish
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          EXPECTED: ${{ steps.verified.outputs.digest }}
         run: |
           set -eu
-          IMAGE_REF=$(./apko publish \
-            --arch x86_64,aarch64 \
-            --repository-append melange-repo/packages \
-            --keyring-append melange-repo/melange.rsa.pub \
-            "frameworks/${{ matrix.framework }}.yaml" \
-            "${IMAGE_NAME}:${TIMESTAMP_TAG}" | tail -n1)
-          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
-          echo "digest=${IMAGE_REF#*@}" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/skopeo-auth"
+          trap 'rm -f "$RUNNER_TEMP/skopeo-auth/config.json"' EXIT
+          aws ecr get-login-password | docker run --rm -i \
+            -v "$RUNNER_TEMP/skopeo-auth":/auth "$SKOPEO_IMAGE" \
+            login --authfile /auth/config.json --username AWS --password-stdin "$REGISTRY"
+          docker run --rm -v "$PWD":/work -w /work \
+            -v "$RUNNER_TEMP/skopeo-auth/config.json":/auth/config.json:ro "$SKOPEO_IMAGE" \
+            copy --all --preserve-digests --authfile /auth/config.json \
+            --digestfile /work/published.digest \
+            oci:/work/image.oci:image "docker://${IMAGE_NAME}:${TIMESTAMP_TAG}"
+          ACTUAL=$(cat published.digest)
+          test "$EXPECTED" = "$ACTUAL"
+          # Leia a tag publicada de volta: prova independente do digestfile.
+          docker run --rm \
+            -v "$RUNNER_TEMP/skopeo-auth/config.json":/auth/config.json:ro "$SKOPEO_IMAGE" \
+            inspect --raw --authfile /auth/config.json \
+            "docker://${IMAGE_NAME}:${TIMESTAMP_TAG}" > published-index.json
+          python3 -B .github/scripts/verify_publication.py \
+            image.oci/validated-index.json published.digest published-index.json \
+            "${IMAGE_NAME}@${ACTUAL}" > publication-evidence.json
+          echo "image_ref=${IMAGE_NAME}@${ACTUAL}" >> "$GITHUB_OUTPUT"
+          echo "digest=${ACTUAL}" >> "$GITHUB_OUTPUT"
 
       # Verificabilidade (padrão hardened, ver RFC-013 Fase 3): assina o
       # digest publicado com cosign keyless — usa o mesmo token OIDC do job
@@ -211,7 +145,7 @@ jobs:
       # adicional (tag "sha256-<digest>.sig" se o ECR ainda não suportar a
       # OCI Referrers API nesta região).
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign published image (keyless)
         env:
@@ -225,8 +159,21 @@ jobs:
       # construída. Fica disponível via `gh attestation verify` e, com
       # push-to-registry, também como artefato anexado no ECR.
       - name: Attest build provenance (SLSA)
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
+
+      - name: Preserve publication evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: publication-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: |
+            image.oci/validated-index.json
+            published.digest
+            published-index.json
+            publication-evidence.json
+          retention-days: 30
+          if-no-files-found: warn

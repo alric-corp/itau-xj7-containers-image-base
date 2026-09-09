@@ -9,9 +9,10 @@ python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 python3 -B -m unittest discover -s tests/certificates -p 'test_*.py' -v
 ```
 
-## Pipeline: 40 testes
+## Pipeline: 46 testes
 
-Preservados do PR #1, commit `9704e46`, junto dos módulos que exercitam.
+Quarenta testes preservados do PR #1, commit `9704e46`, junto dos módulos
+que exercitam, e seis novos testes da conferência após publicação.
 Cobrem seleção cronológica de candidatos, prevenção de rollback, identidade
 por digest, integridade OCI, scans nas duas arquiteturas e verificação de
 assinatura/provenance. As chamadas a Docker, Trivy, cosign e GitHub são
@@ -19,8 +20,10 @@ substituídas nos testes; não exigem instalação dessas ferramentas nem rede.
 
 `find_promotion_candidate.py` continua sendo chamado pelo workflow de promoção
 existente. Os novos módulos de scan, OCI e verificação são preservados com seus
-testes; sua integração nos workflows de publicação/promoção é trabalho pendente,
-não uma garantia já ativa em produção.
+testes; esta entrega conecta esses módulos aos workflows de publicação/promoção.
+A execução autenticada na `main` continua pendente até a integração e validação.
+Seis testes adicionais conferem a identidade do índice e dos manifests lidos
+de volta do registry após publicação.
 
 ## Certificados: 13 testes
 
@@ -51,7 +54,9 @@ bloqueia seu uso. Recupere ambos pelo Git ou repita o pin após revisão.
 ## Trabalho preservado para retomada
 
 O PR #1 (`improvements/image-pipeline-validation`) contém mudanças adicionais
-que não fazem parte desta extração. O histórico permanece em:
+que a entrega de testes preservou para retomada. A entrega OCI agora traz os
+workflows, as ferramentas fixadas e a documentação; as validações de integração
+abaixo permanecem pendentes conforme a RFC-013. O histórico permanece em:
 
 - https://github.com/alric-corp/itau-xj7-containers-image-base/pull/1
 - https://github.com/alric-corp/itau-xj7-containers-image-base/tree/9704e46ac758298b46ba107d4236f1edf9cc8bf1
@@ -62,10 +67,12 @@ Antes de integrar o restante, retomar:
    sem rebuild; verificar execução autenticada e retry parcial.
 2. Promoção por digest com assinatura/provenance, re-scan, serialização e soak;
    comprovar integração pelo workflow autenticado.
-3. Restrição da trust policy OIDC, imutabilidade ECR com exceção para stable,
-   tags únicas e atualização das dependências fixadas.
+3. Validar imutabilidade ECR com exceção para stable, tags únicas e atualização
+   das dependências fixadas. A trust policy OIDC já foi corrigida e testada
+   para PR interno/main; o teste específico de fork continua pendente.
 4. Falha de scan do .NET 8 e seleção do lote publicável.
 5. Atualização da RFC-013 e README para refletir somente controles integrados.
 
 As mudanças locais de Makefile e melange para fixar o bundle Mozilla não estavam
-no PR #1 e não estão nesta extração. O rebuild desse pin continua pendente.
+no PR #1 e não estão nesta extração. O rebuild local desse pin foi relatado na sexta entrega da RFC; sua
+integração no repositório continua pendente.

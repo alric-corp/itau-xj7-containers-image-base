@@ -45,6 +45,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  attestations: read
 
 env:
   TRIVY_VERSION: v0.72.0
@@ -52,27 +53,32 @@ env:
 jobs:
   promote:
     name: Promote ${{ matrix.framework }}
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    # Mesmo grupo em dispatch direto e workflow_call: seleção e push serializados.
+    concurrency:
+      group: promote-stable-${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}-${{ inputs.aws-region || vars.AWS_REGION }}-${{ matrix.framework }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         framework: ${{ fromJSON(inputs.frameworks) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # inputs.aws-region/aws-role-arn só existem no workflow_call (o path de
       # produção, chamado por workflow.yml); no workflow_dispatch direto
       # (usado pra testar o gate manualmente) caem para as vars do repo.
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
           role-to-assume: ${{ inputs.aws-role-arn || vars.AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region || vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
       - name: List images in repository
         env:
@@ -93,22 +99,43 @@ jobs:
       # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
       # relação ao momento do build original — é aqui que uma CVE divulgada
       # durante a janela de soak barra a promoção.
-      - name: Re-scan candidate before promotion
-        if: steps.candidate.outputs.skip != 'true'
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Install cosign
+        if: steps.candidate.outputs.skip == 'false'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify candidate platforms, signature and provenance
+        if: steps.candidate.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
+        run: python3 -B .github/scripts/verify_promotion.py "$IMAGE_REF" "$GITHUB_REPOSITORY"
+
+      - name: Install Trivy
+        if: steps.candidate.outputs.skip == 'false'
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
-          image-ref: "${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}"
-          format: table
-          severity: CRITICAL,HIGH,MEDIUM,LOW
-          ignore-unfixed: true
-          exit-code: "1"
           version: ${{ env.TRIVY_VERSION }}
+
+      - name: Re-scan both architectures before promotion
+        if: steps.candidate.outputs.skip == 'false'
+        env:
+          IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
+        run: python3 -B .github/scripts/scan_images.py remote "$IMAGE_REF"
+
+      - name: Preserve promotion scan evidence
+        if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: promotion-scans-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
 
       # docker buildx imagetools create retagueia o índice multi-arch por
       # referência (sem baixar/re-subir camadas), preservando o manifest
       # list amd64+arm64 tal como foi publicado.
       - name: Promote to stable
-        if: steps.candidate.outputs.skip != 'true'
+        if: steps.candidate.outputs.skip == 'false'
         env:
           IMAGE: ${{ steps.candidate.outputs.image }}
           DIGEST: ${{ steps.candidate.outputs.digest }}

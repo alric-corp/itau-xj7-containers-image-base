@@ -35,7 +35,7 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 - **Camada única (single layer):** o `apko` não empilha `RUN` como um Dockerfile faz — ele resolve o grafo de dependências dos pacotes Wolfi e escreve o resultado final numa única camada, sem cache de gerenciador de pacotes, arquivo temporário ou camada intermediária "fantasma" sobrando na imagem publicada.
 - **Superfície de ataque mínima:** `distroless/image-base.yaml` (herdado por todo `frameworks/<nome>.yaml`) só traz `ca-certificates-bundle` + `bundle-pem-test` — **sem `wolfi-base`**, que traria `apk-tools` e `busybox` (shell) de brinde via dependência transitiva. Cada `frameworks/<nome>.yaml` só declara o runtime que precisa (ex.: `openjdk-21`) em cima disso — sem shell, gerenciador de pacotes, compilador ou ferramentas de rede além do estritamente necessário, para todas as linguagens. Todas as imagens rodam como usuário non-root por padrão (`spring` ou `appuser`, uid/gid 10000). Node.js é o único runtime que depende de um gerenciador de pacotes (`npm`) para instalar dependências — por isso ele é o único com duas variantes: `nodejsNN` (runtime final, sem `npm`/`busybox`/shell) e `nodejsNN-dev` (com `npm`/`busybox`, usada só no estágio de build). A imagem que efetivamente vai pra produção nunca tem shell nem `apk`.
 - **Cadeia de suprimentos (supply chain) rastreável:** os pacotes vêm do repositório rolling-release do [Wolfi](https://github.com/wolfi-dev) (assinado e mantido pela Chainguard); o único pacote que não vem de lá (`bundle-pem-test`) é compilado neste próprio repositório via melange, com índice assinado por uma chave efêmera gerada a cada build. Não existe imagem base de terceiros nem `FROM` de uma tag de procedência desconhecida.
-- **SBOM e scan em todo build:** o `apko` gera um SBOM (SPDX) a cada build, e o [Trivy](#pipeline-de-cicd-github-actions) escaneia a imagem localmente antes de qualquer push — uma CVE `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` **com correção disponível** falha o pipeline e a imagem nunca chega a ser publicada (veja [`ignore-unfixed`](#pipeline-de-cicd-github-actions)).
+- **SBOM e scan em todo build:** o `apko` gera um SBOM (SPDX) a cada build, e o [Trivy](#pipeline-de-cicd-github-actions) escaneia a imagem localmente antes de qualquer push — uma CVE `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` **com correção disponível** falha o pipeline e impede o job de publicação daquele run (veja [`ignore-unfixed`](#pipeline-de-cicd-github-actions)).
 
 ## Imagens disponíveis
 
@@ -56,7 +56,7 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
-Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um build imutável sobrevive à janela de soak sem novas CVEs — veja [Gate de promoção](#gate-de-promoção-para-stable-canário-de-soak)) e **`<ddmmaa>-<hhmm>`** (referência imutável de um build específico, ex.: `010726-0152` para 1º de julho de 2026 às 01:52 no horário de Brasília, GMT-3).
+Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um build imutável sobrevive à janela de soak sem novas CVEs — veja [Gate de promoção](#gate-de-promoção-para-stable-canário-de-soak)) e **`<ddmmaa>-<hhmm>-r<run_id>-a<tentativa>`** (identificador único por execução/tentativa; as tags históricas `ddmmaa-hhmm` continuam reconhecidas pelo seletor).
 
 ## Pré-requisitos
 
@@ -108,7 +108,8 @@ Cada pasta tem uma responsabilidade única: `distroless/` define a base comum, `
 │   ├── scripts
 │   │   └── find_promotion_candidate.py   # usado pelo promote-stable.yml pra achar o candidato à promoção
 │   └── workflows
-│       ├── build-base-images.yml   # workflow reusável: build + scan + publish (só a tag imutável)
+│       ├── validate-base-images.yml # build + scan nas duas arquiteturas, sem AWS
+│       ├── build-base-images.yml   # validação seguida de publicação autorizada na main
 │       ├── promote-stable.yml      # workflow reusável: gate de promoção (canário de soak) -> tag stable
 │       └── workflow.yml            # dispara os dois pipelines acima (push/PR/schedule)
 ├── distroless
@@ -186,90 +187,63 @@ flowchart LR
 
 ## Pipeline de CI/CD (GitHub Actions)
 
-O `workflow.yml` dispara dois pipelines reusáveis, cada um num agendamento diferente:
+O `workflow.yml` separa validação e publicação:
+
+- **PRs:** chamam `validate-base-images.yml`, com `contents: read`, sem OIDC, autenticação AWS ou push.
+- **Push na `main`, execução manual na `main` e schedule diário às 03:00 UTC:** chamam `build-base-images.yml`, que executa a mesma validação antes do job de publicação.
+- **Promoção:** roda a cada hora, no minuto 17, e seleciona somente candidatos que completaram o soak mínimo de seis horas desde o push.
 
 ```mermaid
 flowchart TD
-    T1["push / pull_request / schedule 03:00 UTC"] --> W["workflow.yml"]
-    T2["schedule 09:00 UTC<br/>(~6h depois do build)"] --> W
-
-    W -- "workflow_call" --> R["build-base-images.yml"]
-    W -- "workflow_call" --> P["promote-stable.yml"]
-
-    R --> M["Job: Compile certs with melange"]
-    M --> AR[("artifact: melange-repo<br/>apks + chave pública")]
-
-    AR --> X{"Job: build-push<br/>(matrix, 12 itens, roda em paralelo)"}
-    X --> J1["java21 / java25"]
-    X --> J2["python3-13 / python3-14"]
-    X --> J3["go1-25 / go1-26"]
-    X --> J4["nodejs22 / nodejs22-dev"]
-    X --> J5["nodejs24 / nodejs24-dev"]
-    X --> J6["dotnet8 / dotnet10"]
-
-    J1 & J2 & J3 & J4 & J5 & J6 --> ECR[("Amazon ECR<br/>image-base-&lt;framework&gt;<br/>só tag imutável")]
-
-    ECR -.-> P
-    P -->|"soak ok + re-scan limpo"| STABLE["tag stable"]
+    PR["Pull request"] --> V["validate-base-images.yml<br/>sem AWS / somente leitura"]
+    MAIN["main: push / dispatch / build diário"] --> B["build-base-images.yml"]
+    B --> V
+    V --> M["Melange: bundle amd64 + arm64"]
+    M --> A["Apko: layout OCI por framework"]
+    A --> S["Trivy: amd64 + arm64<br/>relatórios JSON e digests OCI"]
+    S --> G["Todos os frameworks selecionados aprovados"]
+    G -->|"somente execução autorizada na main"| PUB["Job de publicação<br/>OIDC + cópia OCI + assinatura/provenance"]
+    PUB --> ECR[("ECR: tag de build")]
+    H["Schedule horário"] --> P["promote-stable.yml"]
+    ECR --> P
+    P --> SOAK["Candidato elegível + re-scan<br/>amd64 + arm64 por digest"]
+    SOAK --> STABLE["stable"]
 ```
 
-Dentro de cada item da matrix (um framework/versão), a ordem dos passos garante que **o scan de vulnerabilidades roda antes de qualquer push**, e que o multi-arch é publicado num único comando atômico (sem tags soltas do tipo `latest-amd64`/`latest-arm64` ficando visíveis no registry):
+O build do CI usa `apko build` uma única vez por framework para produzir um layout OCI multi-arquitetura. [oci_artifact.py](.github/scripts/oci_artifact.py) verifica hashes/tamanhos dos blobs, presença de amd64/arm64 e coerência dos configs, preservando o índice original em um layout transportável. [scan_images.py](.github/scripts/scan_images.py) fornece ao Trivy uma visão com apenas o manifest da arquitetura solicitada e confere a arquitetura no relatório: o teste real mostrou que somente `--platform` não bastava para layouts OCI multi-arquitetura no Trivy 0.72.0.
 
-```mermaid
-sequenceDiagram
-    participant CI as GitHub Actions
-    participant ECR as Amazon ECR
-    participant APKO as apko (binário nativo)
-    participant TRIVY as Trivy
+Relatórios JSON e digests dos manifests ficam nos artifacts `build-scans-<framework>-<tentativa>` por 30 dias. O layout aprovado, sua evidência e os SBOMs são transferidos em `validated-oci-<framework>` por três dias. Uma falha em qualquer arquitetura impede a disponibilização desse artifact para publicação.
 
-    CI->>ECR: assume role via OIDC + docker login
-    CI->>CI: extrai o binário do apko de<br/>cgr.dev/chainguard/apko:latest
-    CI->>CI: baixa o artifact melange-repo
-    CI->>CI: garante que o repositório ECR existe
-    CI->>CI: define nome da imagem e a tag imutável<br/>(ddmmaa-hhmm GMT-3)
+A validação usa matrix com `fail-fast: false`. **A publicação só começa se todos os frameworks selecionados passarem**; uma falha de validação bloqueia o lote daquele run. O job de publicação tem matrix própria e autenticação AWS restrita à `main`. Para publicar um subconjunto validado, uma execução manual pode selecionar os frameworks desejados.
 
-    rect rgb(240, 240, 240)
-        note over CI,APKO: build local, sem tocar no registry
-        CI->>APKO: apko build --arch x86_64
-        APKO-->>CI: <framework>-amd64.tar
-        CI->>CI: docker load
-        CI->>APKO: apko build --arch aarch64
-        APKO-->>CI: <framework>-arm64.tar
-        CI->>CI: docker load
-    end
+**Identidade do artefato (M02):** o publicador baixa o layout aprovado do mesmo run, verifica novamente sua integridade e usa Skopeo com `copy --all --preserve-digests`. O digest devolvido pela cópia precisa ser igual ao índice validado; não há novo build nem resolução de pacotes nesse job. Após copiar, o publicador lê a tag de volta e confere os bytes do índice e os manifests de ambas as arquiteturas contra a evidência validada. O artifact `publication-<framework>-<tentativa>` preserva essa comparação por 30 dias. A cópia foi comprovada em ECR exclusivo de teste e a leitura de volta em registry local; a integração completa na `main` ainda depende da validação do workflow autenticado.
 
-    CI->>TRIVY: scan IMAGE_NAME:latest-amd64<br/>(ignore-unfixed: true)
-    TRIVY-->>CI: CVE com correção disponível? job falha aqui
+O gate mantém `--ignore-unfixed` e severidades `CRITICAL,HIGH,MEDIUM,LOW`, além do scan de segredos. O scan aprovado representa apenas a política configurada e os dados disponíveis ao Trivy naquele momento. A triagem automática de CVEs permanece pausada; sua futura reativação deverá consumir os relatórios JSON, pois as tabelas em logs deixaram de ser a saída principal.
 
-    note over CI,APKO: só chega aqui se o scan passou
-    CI->>APKO: apko publish --arch x86_64,aarch64<br/>tag: ddmmaa-hhmm (imutável, NÃO stable)
-    APKO->>ECR: publica 1 índice multi-arch (1 tag, 1 push)
-```
-
-Alguns detalhes de design que valem a pena registrar:
-
-- **`apko build` (local) vs `apko publish` (registry):** o `apko build` só grava um `.tar` local, então é usado para montar a imagem que o Trivy escaneia, sem nunca tocar no ECR. Como os builds do apko são reprodutíveis, o `apko publish` gera exatamente o mesmo digest que foi escaneado.
-- **`ignore-unfixed: true`:** o gate falha em qualquer CVE `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` que já tenha correção publicada — mas não trava indefinidamente por uma CVE que o próprio Wolfi ainda não corrigiu. Sem isso, o rebuild diário (que existe justamente pra aplicar patches) poderia ficar travado por algo fora do controle do pipeline.
-- **Sem tags soltas por arquitetura:** `docker manifest create` (a abordagem "clássica") só resolve referências que já existem no registry remoto — obrigaria a dar push de `latest-amd64`/`latest-arm64` antes de criar a lista multi-arch, e essas tags ficariam visíveis no ECR. `apko publish` builda e publica os dois arches num único índice, então essas tags intermediárias nunca chegam a existir no registry.
-- **`apko` "nativo" em vez de via `docker run`:** o binário é extraído da própria imagem `cgr.dev/chainguard/apko:latest` (`docker create` + `docker cp`) e roda direto no runner. Isso garante a versão *latest stable* do apko e permite que ele reaproveite as credenciais que o login no ECR já escreveu em `~/.docker/config.json`, sem precisar montar volumes para simular o `$HOME` de um container.
-- **QEMU só no job do melange:** o `apko` apenas extrai pacotes `.apk` (não executa nada), então builda `aarch64` num runner `amd64` sem emulação. Já o `melange` **executa** o pipeline do pacote (o `curl` que baixa o bundle da Mozilla) dentro de um sandbox `bwrap` — por isso só esse job precisa do `docker/setup-qemu-action`.
-- **Matrix = push em paralelo:** os 12 frameworks/versões (2 por linguagem, exceto Node.js que tem 2 versões × 2 variantes) são itens de uma `strategy.matrix` com `fail-fast: false`, então o GitHub Actions builda/escaneia/publica todos ao mesmo tempo, e uma falha em um deles não cancela os demais.
+QEMU continua restrito ao job melange, que executa comandos no sandbox do pacote. Apko compõe os pacotes sem executar os runtimes. Os testes funcionais das imagens continuam pendentes em M08.
 
 ## Gate de promoção para stable (canário de soak)
 
-A tag `stable` **não** é publicada no mesmo run que builda a imagem. `promote-stable.yml` roda separadamente (por padrão, ~6h depois do build diário) e só promove um build para `stable` se, decorrida a janela de soak, um **re-scan** do mesmo digest continuar limpo:
+A tag `stable` **não** é publicada no mesmo run que builda a imagem. `promote-stable.yml` roda separadamente a cada hora (minuto 17) e só promove um build para `stable` se, decorrida a janela de soak, um **re-scan** do mesmo digest continuar limpo:
 
-1. Lista as imagens do repositório ECR e acha o build imutável mais recente que já passou da janela de soak (`.github/scripts/find_promotion_candidate.py`).
-2. Re-escaneia esse digest com Trivy (`ignore-unfixed: true`) — é aqui que uma CVE divulgada durante a janela de soak barra a promoção, mesmo que o build tivesse passado limpo no scan original.
-3. Se o re-scan continuar limpo, promove com `docker buildx imagetools create --tag <imagem>:stable <imagem>@<digest>` — retagueia o índice multi-arch por referência, sem baixar/re-subir camadas.
+1. Lista as imagens do repositório ECR e seleciona o índice OCI/Docker com tag de build válida (`ddmmaa-hhmm`, com sufixo opcional `-r<run_id>-a<tentativa>`) mais recente entre os que já completaram o soak. Descarta o digest já marcado como `stable` e candidatos com data de push anterior ou igual à dele (`.github/scripts/find_promotion_candidate.py`). Um build recente ainda em soak não impede a seleção de outro elegível.
+2. Inspeciona o índice e exige exatamente `linux/amd64` e `linux/arm64`. Verifica assinatura cosign com identidade exata do workflow `build-base-images.yml@refs/heads/main` e provenance GitHub vinculada ao signer workflow e à source ref `refs/heads/main`. Falhas e evidências ausentes bloqueiam a promoção.
+3. Re-escaneia esse digest com Trivy em `linux/amd64` e `linux/arm64` (`--ignore-unfixed`). Uma falha em qualquer arquitetura bloqueia a promoção. Os relatórios e a referência por digest ficam nos artifacts `promotion-scans-<framework>-<tentativa>` por 30 dias.
+4. Se o re-scan continuar limpo, promove com `docker buildx imagetools create --tag <imagem>:stable <imagem>@<digest>` — retagueia o índice multi-arch por referência, sem baixar/re-subir camadas.
 
-Isso é um canário de **tempo/CVE**, não um canário de tráfego real contra aplicações consumidoras — não há apps de referência nesta POC pra validar contra. Validar contra consumidores reais (deploy canário, smoke test de aplicação) é responsabilidade de cada pipeline de deploy downstream; este repositório garante só que `stable` nunca aponta pra um build que ficou vulnerável nas primeiras horas de vida.
+Isso é um canário de **tempo/CVE**, não um canário de tráfego real contra aplicações consumidoras — não há apps de referência nesta POC pra validar contra. Validar contra consumidores reais (deploy canário, smoke test de aplicação) é responsabilidade de cada pipeline de deploy downstream. O gate reavalia vulnerabilidades conhecidas no momento do scan, nas severidades configuradas e com correção disponível; ele não garante ausência de vulnerabilidades durante toda a janela de soak.
 
-**SLA de patch (pilar "manutenção" de um hardened image, ver RFC-013):** o Wolfi é rolling-release, então um patch de segurança fica disponível pra ele assim que o upstream libera. A partir daí, o pior caso de propagação neste pipeline é: até 24h para o próximo rebuild diário pegar o patch (`build-base-images.yml`, 03:00 UTC) + ~6h de soak antes da promoção (`promote-stable.yml`, 09:00 UTC) — um SLA efetivo de **até ~30h entre o patch existir no Wolfi e `stable` refletir ele**. Quem precisa do patch antes disso pode consumir a tag imutável do dia assim que ela é publicada, sem esperar a promoção.
+A seleção inicial usa metadados ECR; o gate posterior valida plataformas, assinatura e provenance por digest. O verificador espera que o workflow assinante esteja no mesmo repositório GitHub informado ao script; chamadas externas precisam alinhar explicitamente essa política à localização do workflow assinante. A seleção e a atualização de `stable` são serializadas por role/região/framework dentro do mesmo repositório GitHub, tanto no dispatch direto quanto no workflow reusável; atualizações externas não participam desse controle. Os testes dos scripts rodam em PRs/pushes que alterem os scripts e antes da autenticação AWS na promoção. Para executá-los localmente, sem Docker ou AWS:
+
+```bash
+python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+```
+
+**SLA de patch em definição (ver M04/M11 da RFC-013):** o rebuild diário depende da correção estar disponível no Wolfi. Com a promoção horária, um build publicado às 03:20 UTC completa o soak às 09:20 UTC e poderá ser avaliado às 10:17 UTC. A espera nominal após o soak é inferior a uma hora, mas atrasos do scheduler, filas e falhas dos jobs impedem tratá-la como garantia. O SLA será formalizado com medições ponta a ponta. O build publicado pode ser consumido antes da promoção, assumindo explicitamente que ainda não passou pelo gate de `stable`.
 
 ## Verificação: assinatura e build provenance
 
-Toda imagem publicada (tag imutável) é assinada e tem build provenance anexado — isso é o que falta pra sair de "distroless" pra "hardened" no sentido pleno do termo (ver a seção de maturidade na RFC-013):
+Após a cópia do artifact, o pipeline assina o digest e anexa build provenance. Uma falha nessas etapas pode deixar uma tag de build incompleta; o gate de promoção exige verificação das duas evidências antes de atualizar `stable`:
 
 - **Assinatura (cosign, keyless):** o job `build-push` assina o digest publicado com [cosign](https://github.com/sigstore/cosign) usando o token OIDC do próprio GitHub Actions — sem chave privada pra gerenciar ou rotacionar. A assinatura fica registrada no transparency log público do [Rekor](https://docs.sigstore.dev/logging/overview/).
 - **Build provenance (SLSA):** `actions/attest-build-provenance` gera uma attestation nativa do GitHub descrevendo de qual commit, workflow e run a imagem saiu.
@@ -287,16 +261,18 @@ cosign verify \
 gh attestation verify oci://<registro-ecr>/image-base-java21:stable --owner <sua-org>
 ```
 
-Nenhum dos dois comandos foi validado contra um push real nesta POC ainda (build-base-images.yml não rodou contra AWS/ECR de verdade) — confirme o formato exato do digest retornado por `apko publish` e a compatibilidade do ECR com a OCI Referrers API na sua região antes de tratar isso como pronto para produção.
+Assinatura e provenance foram verificadas em leitura contra um digest já publicado pela main, e um artifact sem assinatura foi rejeitado pelo novo gate. A execução completa desse gate no workflow autenticado de promoção ainda está pendente; ver evidências e digests no checklist da RFC-013.
 
 ## Configuração dos workflows reusáveis
 
-Nenhum dos dois workflows depende do `workflow.yml` deste repo — qualquer outro repositório pode chamá-los diretamente. Os dois autenticam via OIDC (nenhuma AWS access key é armazenada como secret):
+Os workflows podem ser chamados diretamente. `validate-base-images.yml` exige apenas `frameworks` e `contents: read`, sem credenciais AWS. Build/publicação e promoção exigem OIDC e restringem os jobs que acessam AWS a eventos de push/schedule/dispatch na `main` do chamador. No uso externo, `actions/checkout` utiliza o repositório chamador, que precisa conter os manifestos e scripts esperados. Exemplo de permissões para build/publicação e promoção:
 
 ```yaml
 permissions:
   id-token: write
   contents: read
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   build-images:
@@ -335,12 +311,20 @@ make run FRAMEWORK=go1-26 ENTRYPOINT=/usr/bin/go ARGS=version  # builda e roda u
 make clean                                                # remove chave e pacotes locais
 ```
 
-`make build` builda o pacote `bundle-pem-test` com o melange (gerando uma chave de assinatura local descartável) e depois usa `apko publish --local`, que carrega a imagem direto no Docker daemon local sem tocar em nenhum registry — é exatamente o que o pipeline de CI faz antes de escanear com o Trivy. O `ARCH` é detectado automaticamente a partir do host (pode ser sobrescrito, ex.: `make build FRAMEWORK=go1-26 ARCH=x86_64`). Build local não precisa de credencial AWS — só entra em jogo quando o CI publica de fato no ECR.
+`make build` builda o pacote `bundle-pem-test` com o melange (gerando uma chave de assinatura local descartável) e depois usa `apko publish --local`, que carrega a imagem direto no Docker daemon local sem tocar em nenhum registry — no CI, `apko build` gera um layout OCI escaneado pelo Trivy por arquitetura. O `ARCH` é detectado automaticamente a partir do host (pode ser sobrescrito, ex.: `make build FRAMEWORK=go1-26 ARCH=x86_64`). Build local não precisa de credencial AWS — só entra em jogo quando o CI publica de fato no ECR.
 
 ## Conclusão
 
 Manter uma imagem base atualizada e escaneada pra 5 linguagens diferentes costuma acabar em um de dois lugares: um Dockerfile artesanal por time/projeto que ninguém revisita depois que funciona uma vez, ou a decisão de aceitar uma imagem genérica de distro completa (com o pacote de ferramentas — e CVEs — que vem junto) só porque é o caminho de menor resistência.
 
-O `image-base` existe pra tirar essa decisão do caminho: uma única fonte de verdade (`frameworks/*.yaml`) cobre as 12 combinações linguagem+versão+variante suportadas, e o pipeline garante que nenhuma imagem chega ao ECR sem passar pelo scan de vulnerabilidades antes — publicar algo com uma CVE conhecida e corrigível deixa de ser possível por descuido. A promoção pra `stable` só acontece depois que o build sobrevive a uma janela de soak sem novas CVEs, então nenhum time fica exposto a um base image que ficou vulnerável horas depois de publicado.
+O `image-base` centraliza as 12 combinações linguagem+versão+variante em `frameworks/*.yaml`, com validação das duas arquiteturas antes do job de publicação e nova avaliação por digest antes de promover para `stable`. A identidade do artefato é preservada na cópia OCI; o checklist da RFC-013 distingue implementação, testes reais e controles ainda pendentes.
 
 Isso não substitui a imagem final da sua aplicação — é o ponto de partida (`FROM <registro-ecr>/image-base-<framework>:stable`) pra não ter que decidir, de novo, quais pacotes tirar de uma imagem Ubuntu/Alpine pra chegar a um resultado parecido.
+
+## Dependências do pipeline e tags
+
+As Actions diretas dos workflows de build/validação/promoção estão fixadas por SHA; apko, melange e Skopeo usam digests. Dependabot propõe atualizações semanais de Actions. A atualização dos digests das ferramentas ainda exige revisão manual, incluindo o Makefile; automação e política de atualização completas permanecem em M09.
+
+O workflow de publicação configura tags imutáveis no ECR, com exceção exata para `stable`, incluindo repositórios existentes. As tags novas incluem run ID e tentativa. A compatibilidade das assinaturas/provenance com essa configuração deve ser validada no workflow autenticado antes da liberação. Reexecuções parciais do publicador reutilizam `validated-oci-<framework>` aprovado no mesmo run, independentemente de `run_attempt`. Se a validação for reexecutada, o artifact é substituído somente após o novo scan passar (`overwrite: true`); uma validação malsucedida bloqueia a publicação pelo `needs: validate`, mesmo que exista um artifact anterior. O repositório melange também permite substituição em reexecuções completas. Artifacts expirados exigem nova validação. Os relatórios de scan continuam separados por tentativa.
+
+Para executar as suítes de regressão do pipeline e dos certificados, consulte [tests/README.md](tests/README.md).
