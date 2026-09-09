@@ -38,6 +38,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: validate
     runs-on: ubuntu-latest
+    # Observado: 32-110s por framework num run real de 11 frameworks (M14);
+    # dotnet10 (maior artifact) foi o mais lento. Margem cobre variância de
+    # rede nas chamadas AWS/ECR/cosign/Sigstore.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

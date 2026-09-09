@@ -21,6 +21,9 @@ jobs:
   melange-bundle:
     name: Compile certs with melange
     runs-on: ubuntu-latest
+    # Observado: 21-37s num run real (M14). Timeout generoso pra não
+    # confundir variância normal de rede/runner com um hang de verdade.
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -61,6 +64,10 @@ jobs:
     name: Validate ${{ matrix.framework }}
     needs: melange-bundle
     runs-on: ubuntu-latest
+    # Observado: 21-64s por framework num run real com 16 frameworks (M14).
+    # dotnet8/java21 (SDK/JDK completos) foram os mais lentos observados;
+    # margem cobre frameworks futuros maiores e variância de download.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
