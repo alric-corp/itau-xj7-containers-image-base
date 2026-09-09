@@ -16,11 +16,22 @@ on:
 permissions:
   contents: read
 
+# M14: um novo commit no mesmo PR cancela a validação obsoleta em vez de
+# rodar as duas até o fim; PRs diferentes (números diferentes) não se
+# cancelam entre si, já que cada um tem seu próprio grupo. Só afeta este
+# gate sem AWS — nunca compartilhado com os grupos de build-push/promote,
+# que não podem ser cancelados por um PR/build novo (ver promote-stable.yml).
+concurrency:
+  group: fast-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Observado: ~24s num run real (M14).
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Test image pipeline scripts
@@ -30,8 +41,10 @@ jobs:
 
   lint-workflows:
     runs-on: ubuntu-latest
+    # Observado: ~5s num run real (M14).
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # cve-triage.lock.yml é gerado pelo `gh aw compile` a partir de
@@ -47,4 +60,5 @@ jobs:
             .github/workflows/validate-base-images.yml \
             .github/workflows/promote-stable.yml \
             .github/workflows/workflow.yml \
-            .github/workflows/test-promotion.yml
+            .github/workflows/test-promotion.yml \
+            .github/workflows/recover-stable.yml

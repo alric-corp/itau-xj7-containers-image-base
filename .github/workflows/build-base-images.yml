@@ -35,9 +35,25 @@ jobs:
 
   build-push:
     name: Build & push ${{ matrix.framework }}
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    # M13: `needs: validate` sozinho pularia TODA a matriz de publicação se
+    # QUALQUER framework falhasse a validação (dotnet8 falha o scan há
+    # tempos, por exemplo) — needs trata o job `validate` (com sua própria
+    # matriz interna) como um resultado agregado, não por framework.
+    # `if: always()` evita esse skip em massa; o isolamento por framework de
+    # verdade acontece no passo "Download validated OCI artifact" abaixo —
+    # cada leg da matriz só publica se o SEU PRÓPRIO artifact aprovado
+    # existir. Não é `continue-on-error` no scan (o scan de cada framework
+    # continua falhando normalmente, dentro do job `validate`) nem
+    # `if: always()` sozinho sem a checagem — a falha de validação de um
+    # framework continua visível e sem publicação, só não derruba os outros
+    # frameworks do lote.
+    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: validate
     runs-on: ubuntu-latest
+    # Observado: 32-110s por framework num run real de 11 frameworks (M14);
+    # dotnet10 (maior artifact) foi o mais lento. Margem cobre variância de
+    # rede nas chamadas AWS/ECR/cosign/Sigstore.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -54,10 +70,23 @@ jobs:
         run: python3 -B .github/scripts/validate_inputs.py
 
       - name: Download validated OCI artifact
+        id: download
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: validated-oci-${{ matrix.framework }}
           path: image.oci
+
+      # Framework isolado: sem o artifact aprovado (validate falhou pra
+      # ESTE framework especificamente, ou nunca rodou por falha na
+      # dependência comum do bundle), esta leg falha aqui — visível, sem
+      # publicação — sem afetar as legs de outros frameworks cujo artifact
+      # foi aprovado normalmente.
+      - name: Require validated artifact
+        if: steps.download.outcome == 'failure'
+        run: |
+          echo "::error::Nenhum artifact validado para ${{ matrix.framework }} — validação falhou ou não rodou (ver job 'validate'). Publicação abortada para este framework." >&2
+          exit 1
 
       - name: Verify artifact integrity and platforms
         id: verified
