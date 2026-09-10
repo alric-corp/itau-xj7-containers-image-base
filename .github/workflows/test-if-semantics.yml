@@ -1,0 +1,28 @@
+# Disposable verification for M12: confirms empirically, on a real GitHub
+# runner, whether a custom `if:` without always()/failure()/cancelled()
+# implicitly requires all previous steps in the job to succeed. This file
+# and its branch/PR are throwaway -- delete once the finding is recorded.
+name: Verify if-condition semantics (disposable)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail on purpose
+        run: exit 1
+
+      - name: Custom if, no always/failure/cancelled (like promote-stable.yml today)
+        if: ${{ true }}
+        run: echo "RAN: custom-if-without-always"
+
+      - name: Custom if with cancelled guard (the proposed fix)
+        if: ${{ !cancelled() && true }}
+        run: echo "RAN: custom-if-with-cancelled-guard"
