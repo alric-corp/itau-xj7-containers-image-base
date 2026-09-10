@@ -51,10 +51,12 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 |---|---|---|---|---|---|
 | Java | 21 (LTS) | `openjdk-21-jre` | `image-base-java21` | `spring` | runtime final (sem `javac`/jmods/shell) |
 | Java | 21 (LTS) | `openjdk-21`, `busybox` | `image-base-java21-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
-| Java | 25 (LTS) | `openjdk-25` | `image-base-java25` | `spring` | runtime final (JDK completo — ainda não separado, ver M07) |
+| Java | 25 (LTS) | `openjdk-25-jre` | `image-base-java25` | `spring` | runtime final (sem `javac`/jmods/shell) |
+| Java | 25 (LTS) | `openjdk-25`, `busybox` | `image-base-java25-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
 | Python | 3.13 | `python-3.13` | `image-base-python3-13` | `appuser` | runtime final |
 | Python | 3.14 | `python-3.14` | `image-base-python3-14` | `appuser` | runtime final |
-| Go | 1.25 | `go-1.25` | `image-base-go1-25` | `appuser` | runtime final (toolchain completo — ainda não separado, ver M07) |
+| Go | 1.25 | *(nenhum — só a base distroless)* | `image-base-go1-25` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
+| Go | 1.25 | `go-1.25`, `busybox` | `image-base-go1-25-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Go | 1.26 | *(nenhum — só a base distroless)* | `image-base-go1-26` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
 | Go | 1.26 | `go-1.26`, `busybox` | `image-base-go1-26-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Node.js | 22 (LTS) | `nodejs-22` | `image-base-nodejs22` | `appuser` | runtime final (sem npm/shell) |
@@ -66,6 +68,8 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 | .NET | 10 (LTS) | `dotnet-10-sdk`, `busybox` | `image-base-dotnet10-dev` | `appuser` | build stage (SDK completo + shell, para `dotnet publish`) |
 
 **⚠️ Migração (09/09/2026):** `image-base-go1-26`, `image-base-dotnet10` e `image-base-java21` deixaram de conter o toolchain de build (Go, SDK do .NET, JDK) e passaram a ser runtime-only, seguindo o mesmo padrão que `image-base-nodejs22`/`nodejs24` já usavam. Quem consumia essas três tags para **compilar** (não só rodar) precisa migrar para as novas tags `-dev` (`image-base-go1-26-dev`, `image-base-dotnet10-dev`, `image-base-java21-dev`), que mantêm o toolchain completo — veja os exemplos de Dockerfile multi-stage abaixo. `go1-25`, `dotnet8` e `java25` ainda não passaram por essa separação (continuam com o toolchain completo na tag única).
+
+**⚠️ Migração (10/09/2026):** o mesmo movimento para `image-base-go1-25` e `image-base-java25` — passaram a ser runtime-only (`go1-25` só a base; `java25` com `openjdk-25-jre`). Quem compilava com essas tags deve usar `image-base-go1-25-dev`/`image-base-java25-dev` no estágio de build. Dos frameworks do catálogo, só `dotnet8` continua sem a separação.
 
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
@@ -202,7 +206,7 @@ flowchart TD
         B3["bundle-pem-test<br/>(apk compilado pelo melange)"]
     end
 
-    Base -- "include:" --> J["java21.yaml (JRE) + java25.yaml (JDK)<br/>openjdk-21-jre / openjdk-25 · user spring"]
+    Base -- "include:" --> J["java21.yaml + java25.yaml (JRE)<br/>openjdk-21-jre / openjdk-25-jre · user spring"]
     Base -- "include:" --> JD["java21-dev.yaml<br/>openjdk-21 (JDK), só build stage · user spring"]
     Base -- "include:" --> N["nodejs22.yaml + nodejs24.yaml<br/>runtime final, sem npm/busybox · user appuser"]
     Base -- "include:" --> ND["nodejs22-dev.yaml + nodejs24-dev.yaml<br/>+ npm + busybox, só build stage · user appuser"]
@@ -210,7 +214,7 @@ flowchart TD
     Base -- "include:" --> GD["go1-26-dev.yaml<br/>go-1.26, só build stage · user appuser"]
     Base -- "include:" --> DN["dotnet10.yaml<br/>aspnet-10-runtime, sem SDK · user appuser"]
     Base -- "include:" --> DND["dotnet10-dev.yaml<br/>dotnet-10-sdk, só build stage · user appuser"]
-    Base -- "include:" --> OUT["... Python, go1-25, dotnet8 e java25<br/>ainda sem separação run/dev (M07)"]
+    Base -- "include:" --> OUT["... Python (runtime) e dotnet8<br/>(SDK, ainda sem separação run/dev)"]
 ```
 
 (a tabela [Imagens disponíveis](#imagens-disponíveis) acima tem a lista completa e exata dos 12 arquivos)
@@ -414,7 +418,7 @@ jobs:
     with:
       aws-region: us-east-1
       aws-role-arn: arn:aws:iam::<conta>:role/github-actions-image-base
-      frameworks: '["java25", "nodejs24", "nodejs24-dev"]'
+      frameworks: '["java25", "java25-dev", "nodejs24", "nodejs24-dev"]'
 
   promote-images:
     uses: <sua-org>/image-base/.github/workflows/promote-stable.yml@main
@@ -422,7 +426,7 @@ jobs:
       aws-region: us-east-1
       aws-role-arn: arn:aws:iam::<conta>:role/github-actions-image-base
       soak-hours: 6
-      frameworks: '["java25", "nodejs24", "nodejs24-dev"]'
+      frameworks: '["java25", "java25-dev", "nodejs24", "nodejs24-dev"]'
 ```
 
 | Nome | Workflow | Tipo | Obrigatório | Descrição |

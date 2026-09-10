@@ -16,7 +16,7 @@ on:
         type: choice
         required: true
         options: [nodejs22, nodejs24, nodejs22-dev, nodejs24-dev, python3-13, python3-14,
-                  go1-26, java21, dotnet10]
+                  go1-25, go1-26, java21, java25, dotnet10]
       artifact-run-id:
         description: 'Run containing the validated-oci artifact in this repository.'
         type: string

@@ -1,0 +1,159 @@
+{
+  "date": "2026-09-10",
+  "environment": "Local Docker daemon arm64 on macOS 25.6; amd64 emulated; apko pinned by the Makefile digest",
+  "scope": "M07 remaining pairs: go1-25/go1-25-dev and java25/java25-dev built with apko (x86_64+aarch64), prepared with oci_artifact, and exercised by the compiled functional contract with the -dev variant as build stage. No publication, no CI run, no ECR.",
+  "base_commit": "b057786 (PR #48 head)",
+  "compressed_layer_bytes_per_platform": {
+    "go1-25": {
+      "amd64": "231K",
+      "arm64": "231K"
+    },
+    "go1-25-dev": {
+      "amd64": "255.3M",
+      "arm64": "239.1M"
+    },
+    "java25": {
+      "amd64": "87.4M",
+      "arm64": "84.6M"
+    },
+    "java25-dev": {
+      "amd64": "118.1M",
+      "arm64": "115.4M"
+    }
+  },
+  "wolfi_packages_checked": {
+    "openjdk-25-jre": "25.0.4.1-r1",
+    "openjdk-25": "25.0.4.1-r1",
+    "go-1.25": "1.25.9-r0"
+  },
+  "positive": [
+    {
+      "framework": "go1-25",
+      "contract": "compiled",
+      "platform": "linux/amd64",
+      "status": "passed",
+      "started_at": "2026-09-10T15:41:09.095424+00:00",
+      "index_digest": "sha256:367dc5a9bdaa098e0a2499a5db3a524bcad79805a2f687ef6129888039adc99b",
+      "manifest_digest": "sha256:c513cbae7e9d03b35ab36aa63412c67af5e2ba22d03f764ea67aeaa0316aea85",
+      "daemon_architecture": "aarch64",
+      "execution": "emulated",
+      "dev_framework": "go1-25-dev",
+      "dev_index_digest": "sha256:b7ec1f551bda9a6087a44f3797befd396aa5deec112d50d37f2ff839be63a11b",
+      "dev_manifest_digest": "sha256:4b79d761204c2c6e6eaf7d5ca4119c6e2ece631298e0bbb0f8d1f60cfb6a2722",
+      "checks": {
+        "version": "1.25.12",
+        "uid": 10000,
+        "gid": 10000,
+        "readonly": true,
+        "tmpfs": true,
+        "writable_dirs": true,
+        "bundle_parse": true,
+        "tls_trusted": true,
+        "tls_untrusted_rejected": true,
+        "dev_shell": true,
+        "build_seconds": 15.2,
+        "application_image": "sha256:a4ae024613af739f962c5bc1e337c6a25cef5eb3b245028eddfaeee1a11c6d0a",
+        "config_digest": "sha256:bf7aa9759b6d2937e50e0888f63beda558ec4d2353854f936cb05998baa0b7f0",
+        "docker_image_id": "sha256:f6f7dff9ba9e7fe4effa205c59bec5027f0a7f575bd9ebab2abadbaee427b30c",
+        "dev_config_digest": "sha256:e94db84edc0d886d10ed9b88ffb16adf4061704dca56691031eee6e752c2f428",
+        "dev_docker_image_id": "sha256:dbf7dca7bf71397b4f8797364c078a949b42692a56d2b1a2baba97c0f76acbc2"
+      }
+    },
+    {
+      "framework": "go1-25",
+      "contract": "compiled",
+      "platform": "linux/arm64",
+      "status": "passed",
+      "started_at": "2026-09-10T15:41:09.095533+00:00",
+      "index_digest": "sha256:367dc5a9bdaa098e0a2499a5db3a524bcad79805a2f687ef6129888039adc99b",
+      "manifest_digest": "sha256:6d8b2725bf9ade9844dc76c35dd2e0c9cc85a083fb6943d2bd44973bc6f71983",
+      "daemon_architecture": "aarch64",
+      "execution": "native",
+      "dev_framework": "go1-25-dev",
+      "dev_index_digest": "sha256:b7ec1f551bda9a6087a44f3797befd396aa5deec112d50d37f2ff839be63a11b",
+      "dev_manifest_digest": "sha256:652f671630ad549db7ff8c312e8ec01303fed6eb4eb6668aa251bbcf29e6bd2e",
+      "checks": {
+        "version": "1.25.12",
+        "uid": 10000,
+        "gid": 10000,
+        "readonly": true,
+        "tmpfs": true,
+        "writable_dirs": true,
+        "bundle_parse": true,
+        "tls_trusted": true,
+        "tls_untrusted_rejected": true,
+        "dev_shell": true,
+        "build_seconds": 3.6,
+        "application_image": "sha256:dd00a2299b9644bd3327403a8bdd45f7c1d2e97468c8c74a73b79b4b3477e659",
+        "config_digest": "sha256:ae6449b2ab5332b61f1fd084d6e2334aadf37334af54ff0bf204abbcd09ce846",
+        "docker_image_id": "sha256:456b6b040e928bc3cb9b964e1510838ff827f84908b69bec1da3a36d36558215",
+        "dev_config_digest": "sha256:e928934a8f4fed516e901a86be966e7683c62ed1c0537b748faa30421f991b5d",
+        "dev_docker_image_id": "sha256:ebd62234ab8b81918bb3ffc1fa62734f0e4a45d20caca8617a72d1157e5999c4"
+      }
+    },
+    {
+      "framework": "java25",
+      "contract": "compiled",
+      "platform": "linux/amd64",
+      "status": "passed",
+      "started_at": "2026-09-10T15:42:01.307753+00:00",
+      "index_digest": "sha256:395ccbc129853d7e51b52799e85da33a8bb320778effc378897d92661cb318ec",
+      "manifest_digest": "sha256:6d62d334b01591c2b070550a5db525ce17d0fa8182a79504e7578a70e794a8e4",
+      "daemon_architecture": "aarch64",
+      "execution": "emulated",
+      "dev_framework": "java25-dev",
+      "dev_index_digest": "sha256:b0db306c3e2c04ee52b597681fd6cce6384495d04f040eaad2ad2883cd380d1a",
+      "dev_manifest_digest": "sha256:32d13319fbb879d53e3722674d6bc182225e03ce86ba6f9e9ace99d7379554b7",
+      "checks": {
+        "version": "25.0.4.1+-wolfi-r1",
+        "uid": 10000,
+        "gid": 10000,
+        "readonly": true,
+        "tmpfs": true,
+        "writable_dirs": true,
+        "bundle_parse": true,
+        "tls_trusted": true,
+        "tls_untrusted_rejected": true,
+        "dev_shell": true,
+        "build_seconds": 1.9,
+        "application_image": "sha256:e03582fa5e64bc38e47a2770fd914febe14c10f004ca03d08f208c960423866c",
+        "config_digest": "sha256:e0318faa6ba050ae794fdfbdf175b23050505274786a6b81d455d905cf0aa927",
+        "docker_image_id": "sha256:10dc2a2e1edaa05048896e4ca87c40cebe3d76c60501380e8376d9e3e9093fe0",
+        "dev_config_digest": "sha256:4ae6e5af5056689e45295241145df9483b572a790beb36d7df020b582d1c6a49",
+        "dev_docker_image_id": "sha256:0150503b047f3c859c6cd86ecadac3c04734966e9466f9d907f86da10161db7f"
+      }
+    },
+    {
+      "framework": "java25",
+      "contract": "compiled",
+      "platform": "linux/arm64",
+      "status": "passed",
+      "started_at": "2026-09-10T15:42:01.307865+00:00",
+      "index_digest": "sha256:395ccbc129853d7e51b52799e85da33a8bb320778effc378897d92661cb318ec",
+      "manifest_digest": "sha256:df23df838fb55e90f8863810e1551c81cfa06a886761d8df44f3006b8e299d6d",
+      "daemon_architecture": "aarch64",
+      "execution": "native",
+      "dev_framework": "java25-dev",
+      "dev_index_digest": "sha256:b0db306c3e2c04ee52b597681fd6cce6384495d04f040eaad2ad2883cd380d1a",
+      "dev_manifest_digest": "sha256:f61c4fcd55b41c121e1e099203ceb24014be42e6d15cd38afb29185746ec5569",
+      "checks": {
+        "version": "25.0.4.1+-wolfi-r1",
+        "uid": 10000,
+        "gid": 10000,
+        "readonly": true,
+        "tmpfs": true,
+        "writable_dirs": true,
+        "bundle_parse": true,
+        "tls_trusted": true,
+        "tls_untrusted_rejected": true,
+        "dev_shell": true,
+        "build_seconds": 0.6,
+        "application_image": "sha256:c11439b902383035e00ad8f7bd10c5ec6979c40304c9d2766e53dd8024f2c9a1",
+        "config_digest": "sha256:97d676066abfeb8f4ad71e60cefdcf0a1054c3feb8b0bd7d0190bdf75b799519",
+        "docker_image_id": "sha256:a242bc3eb6c005027b7a4752c3d50021d6c87c424c43a668620048f1a4d83173",
+        "dev_config_digest": "sha256:3e47965a59da6bfdf542b72f034d87b1cc937153b78e87788c51131135776d53",
+        "dev_docker_image_id": "sha256:887ae7bbcf3b0a33d2b39fffcb90906f0ec17c6a5a2bb8a141b3af3835c18b68"
+      }
+    }
+  ]
+}

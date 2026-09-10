@@ -1,0 +1,36 @@
+# Variante "dev": usada só no estágio de build (multi-stage) da aplicação,
+# para compilar com `javac`/Maven/Gradle. Nunca deve ser a imagem final
+# publicada em produção — para isso use java25.yaml (JRE, sem javac/jmods).
+#
+# busybox entra pelo mesmo motivo do nodejs-dev: sem shell, um `RUN javac
+# ...` normal (shell-form) num Dockerfile falha, e os wrappers mvnw/gradlew
+# são scripts shell (`#!/bin/sh`) — não executam sem /bin/sh de jeito
+# nenhum, mesmo em exec-form.
+include: distroless/image-base.yaml
+contents:
+  packages:
+    - openjdk-25
+    - busybox
+
+work-dir: /app
+
+accounts:
+  groups:
+    - groupname: spring
+      gid: 10000
+  users:
+    - username: spring
+      uid: 10000
+      gid: 10000
+  run-as: spring
+
+paths:
+  - path: /app
+    type: directory
+    uid: 10000
+    gid: 10000
+    permissions: 0o755
+
+environment:
+  JAVA_HOME: /usr/lib/jvm/java-25-openjdk
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-25-openjdk/bin

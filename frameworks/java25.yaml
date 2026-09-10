@@ -1,7 +1,10 @@
+# Variante "run": openjdk-25-jre (JRE), sem javac/jmods/javadoc/demos —
+# sem compilador. Compile em java25-dev.yaml (estágio de build) e copie o
+# JAR/classes para esta imagem no estágio final.
 include: distroless/image-base.yaml
 contents:
   packages:
-    - openjdk-25
+    - openjdk-25-jre
 
 work-dir: /app
 

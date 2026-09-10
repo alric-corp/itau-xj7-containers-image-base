@@ -62,14 +62,14 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(json.loads((directory / 'runtime-nodejs24-arm64.json').read_text())['status'], 'passed')
 
     def test_compiled_contract_requires_the_dev_pair(self):
-        # Cobertura gradual explícita: go1-25/java25/dotnet8 não têm variante
-        # -dev no catálogo, então não podem ter contrato compilado — e o erro
-        # tem de dizer isso, não passar silenciosamente como "sem contrato".
-        for framework in ('go1-25', 'java25', 'dotnet8'):
+        # Cobertura gradual explícita: dotnet8 não tem variante -dev no
+        # catálogo, então não pode ter contrato compilado — e o erro tem de
+        # dizer isso, não passar silenciosamente como "sem contrato".
+        for framework in ('dotnet8',):
             with self.subTest(framework=framework), self.assertRaises(ValueError) as raised:
                 runtime.project(framework)
             self.assertIn('-dev', str(raised.exception))
-        for framework in ('go1-26', 'java21', 'dotnet10'):
+        for framework in ('go1-25', 'go1-26', 'java21', 'java25', 'dotnet10'):
             with self.subTest(framework=framework):
                 directory, dev, toolchain = runtime.project(framework)
                 self.assertEqual(dev, f'{framework}-dev')
@@ -87,9 +87,10 @@ class RuntimeContractTests(unittest.TestCase):
         # Um framework fora do catálogo não vira contrato por parecer com um.
         with self.assertRaises(ValueError):
             runtime.expected_version('go1-99')
-        for framework in ('go1-26', 'java21', 'dotnet10', 'nodejs22', 'python3-13'):
+        for framework in ('go1-25', 'go1-26', 'java21', 'java25', 'dotnet10', 'nodejs22',
+                          'python3-13'):
             self.assertIn(framework, runtime.contracts())
-        for framework in ('dotnet8', 'go1-25', 'java25'):
+        for framework in ('dotnet8', 'go1-25-dev', 'java25-dev'):
             self.assertNotIn(framework, runtime.contracts())
 
     def test_compiled_contract_without_dev_layout_is_rejected_before_docker(self):
