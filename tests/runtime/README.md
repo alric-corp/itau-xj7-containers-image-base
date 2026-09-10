@@ -170,7 +170,9 @@ apko fixado (x86_64+aarch64), preparados como no CI e executados pelo contrato
 compilado — Go 1.25.12 e Java 25.0.4.1 aprovados em amd64 emulado e arm64
 nativo, com shell e toolchain nas `-dev`. Camadas comprimidas por
 arquitetura: `go1-25` 231K vs `go1-25-dev` 239–255M; `java25` 85–87M vs
-`java25-dev` 115–118M. Ainda sem run no runner hospedado.
+`java25-dev` 115–118M. Depois, no runner hospedado, sobre os artifacts do
+`validate-pr` do PR #49 (run 34497811172): `go1-25` (run 34498586167) e
+`java25` (run 34498589927) aprovados em amd64 nativo e arm64 emulado por QEMU.
 
 **Teste negativo, não decorativo:** apontando as duas URLs de TLS para o
 **mesmo** servidor confiável, o contrato do `go1-26` falhou nas duas
