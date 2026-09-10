@@ -1,4 +1,9 @@
 .DEFAULT_GOAL := help
+PYTHON ?= python3
+ACTIONLINT ?= actionlint
+REUSABLE_WORKFLOWS_PATH ?= .reusable-workflows
+# Generated agent workflows are validated by their compiler, not edited by hand.
+WORKFLOWS := $(filter-out .github/workflows/%.lock.yml,$(wildcard .github/workflows/*.yml))
 
 UNAME_ARCH := $(shell uname -m)
 ifeq ($(UNAME_ARCH),arm64)
@@ -17,7 +22,7 @@ MELANGE_REPO := melange/packages
 DOCKER_MELANGE := docker run --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b
 DOCKER_APKO    := docker run --rm -v "$(CURDIR)":/work -w /work -v /var/run/docker.sock:/var/run/docker.sock cgr.dev/chainguard/apko@sha256:37e3aa165456e6c55fcded1e11af7ae9b010af914f0b25015c9a4247ec139c67
 
-.PHONY: help list keygen bundle build run clean
+.PHONY: help list keygen bundle build run clean test test-unit test-integration lint lint-local lint-shared lint-workflows check
 
 help:
 	@echo "Build local das imagens deste repositorio (sem publicar em nenhum registry)."
@@ -27,11 +32,40 @@ help:
 	@echo "  make run FRAMEWORK=go1-26 \\"
 	@echo "       ENTRYPOINT=/usr/bin/go ARGS=version   builda e roda um comando na imagem"
 	@echo "  make clean                            remove chave e pacotes locais"
+	@echo "  make test-unit                        testes sem Docker, AWS ou rede"
+	@echo "  make test-integration                 certificados, TLS e contrato do reusable"
+	@echo "  make lint-local                       hardening e cobertura dos pins"
+	@echo "  make check                            testes e lints (inclui checkout do reusable)"
 	@echo ""
 	@echo "Variaveis: ARCH (padrao: $(ARCH), detectado do host)"
 
 list:
 	@for f in frameworks/*.yaml; do basename "$$f" .yaml; done
+
+test: test-unit test-integration
+
+test-unit:
+	$(PYTHON) -B -m unittest discover -s tests/unit -t . -p 'test_*.py' -v
+
+test-integration:
+	$(PYTHON) -B -m unittest discover -s tests/integration -t . -p 'test_*.py' -v
+
+lint-local:
+	$(PYTHON) -B -m scripts.pipeline.governance.lint_workflow_hardening
+	$(PYTHON) -B -m scripts.pipeline.governance.pin_inventory lint
+
+lint-shared:
+	$(PYTHON) -B -m scripts.pipeline.governance.workflow_dependencies lint
+	$(PYTHON) -B -m scripts.pipeline.operations.operational_health lint
+
+lint-workflows:
+	$(ACTIONLINT) $(WORKFLOWS) \
+		"$(REUSABLE_WORKFLOWS_PATH)/.github/workflows/validate-apko-images.yml" \
+		"$(REUSABLE_WORKFLOWS_PATH)/.github/workflows/test-runtime-images.yml"
+
+lint: lint-local lint-shared lint-workflows
+
+check: test lint
 
 # Chave de assinatura efemera do melange (nunca commitada, veja .gitignore).
 $(MELANGE_KEY):

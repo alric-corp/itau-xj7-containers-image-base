@@ -12,7 +12,7 @@
 #      nova no digest antigo bloqueia a recuperação (exceção exige
 #      política explícita, não esse workflow).
 #   3. O job move "stable" por referência (sem rebuild) e imprime um
-#      trecho JSON pronto para colar em .github/promotion-quarantine.json.
+#      trecho JSON pronto para colar em policies/release/promotion-quarantine.json.
 #   4. Abrir um PR de verdade adicionando essa entrada — impede que o
 #      próximo ciclo de promoção repromova o build retirado (ele
 #      continua sendo o mais novo por timestamp; sem quarentena,
@@ -44,9 +44,6 @@ permissions:
   contents: read
   attestations: read
 
-env:
-  TRIVY_VERSION: v0.72.0
-
 jobs:
   recover:
     name: Recover ${{ inputs.framework }} to ${{ inputs.digest }}
@@ -76,7 +73,7 @@ jobs:
           REASON: ${{ inputs.reason }}
         run: |
           set -eu
-          python3 -B .github/scripts/validate_inputs.py
+          python3 -B -m scripts.pipeline.catalog.validate_inputs
           if [ -z "$REASON" ]; then
             echo "::error::reason não pode ser vazio" >&2
             exit 1
@@ -127,13 +124,11 @@ jobs:
           DIGEST: ${{ inputs.digest }}
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          python3 -B .github/scripts/verify_promotion.py \
+          python3 -B -m scripts.pipeline.release.verify_promotion \
             "${REGISTRY}/image-base-${FRAMEWORK}@${DIGEST}" "$GITHUB_REPOSITORY"
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
+        uses: alric-corp/itau-xj7-reusable-workflows/actions/setup-trivy@eea2d2f4c4102ded74204e4131c1417f444ae3fc # governed Trivy setup
 
       # Re-scan com o banco de CVE atual — um digest antigo pode ter sido
       # aprovado antes de uma CVE ser divulgada; recuperação não é bypass
@@ -144,7 +139,7 @@ jobs:
           DIGEST: ${{ inputs.digest }}
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          python3 -B .github/scripts/scan_images.py remote \
+          python3 -B -m scripts.pipeline.artifacts.scan_images remote \
             "${REGISTRY}/image-base-${FRAMEWORK}@${DIGEST}"
 
       # M11: mesma visibilidade não-bloqueante — nunca falha o job.
@@ -159,7 +154,7 @@ jobs:
           DIGEST: ${{ inputs.digest }}
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          python3 -B .github/scripts/report_unfixed_cves.py remote \
+          python3 -B -m scripts.pipeline.release.report_unfixed_cves remote \
             "${REGISTRY}/image-base-${FRAMEWORK}@${DIGEST}"
 
       - name: Preserve recovery scan evidence
@@ -240,7 +235,7 @@ jobs:
           OPERATOR: ${{ github.actor }}
         run: |
           set -eu
-          echo "::warning::Recuperação concluída. Para impedir que o próximo ciclo de promoção repromova o build retirado (${PREVIOUS}), abra um PR adicionando esta entrada a .github/promotion-quarantine.json em image-base-${FRAMEWORK}:"
+          echo "::warning::Recuperação concluída. Para impedir que o próximo ciclo de promoção repromova o build retirado (${PREVIOUS}), abra um PR adicionando esta entrada a policies/release/promotion-quarantine.json em image-base-${FRAMEWORK}:"
           jq -n --arg digest "$PREVIOUS" --arg reason "$REASON" --arg by "$OPERATOR" \
             --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{digest:$digest, reason:("recuperação: " + $reason), added_by:$by, added_at:$at}'

@@ -47,9 +47,6 @@ permissions:
   contents: read
   attestations: read
 
-env:
-  TRIVY_VERSION: v0.72.0
-
 jobs:
   promote:
     name: Promote ${{ matrix.framework }}
@@ -76,7 +73,7 @@ jobs:
         env:
           FRAMEWORKS: ${{ inputs.frameworks }}
           SOAK_HOURS: ${{ inputs.soak-hours }}
-        run: python3 -B .github/scripts/validate_inputs.py
+        run: python3 -B -m scripts.pipeline.catalog.validate_inputs
 
       # inputs.aws-region/aws-role-arn só existem no workflow_call (o path de
       # produção, chamado por workflow.yml); no workflow_dispatch direto
@@ -105,9 +102,10 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           SOAK_HOURS: ${{ inputs.soak-hours }}
         run: |
-          python3 .github/scripts/find_promotion_candidate.py \
+          python3 -B -m scripts.pipeline.release.find_promotion_candidate \
             images.json "$SOAK_HOURS" "$REGISTRY" "image-base-${FRAMEWORK}" \
-            .github/promotion-quarantine.json
+            policies/release/promotion-quarantine.json \
+            --evidence reports/promotion-evidence.json
 
       # Re-scan por digest, já com o banco de CVE do Trivy atualizado em
       # relação ao momento do build original — é aqui que uma CVE divulgada
@@ -121,23 +119,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
-        run: python3 -B .github/scripts/verify_promotion.py "$IMAGE_REF" "$GITHUB_REPOSITORY"
+        run: python3 -B -m scripts.pipeline.release.verify_promotion "$IMAGE_REF" "$GITHUB_REPOSITORY"
 
       - name: Install Trivy
         if: steps.candidate.outputs.skip == 'false'
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
+        uses: alric-corp/itau-xj7-reusable-workflows/actions/setup-trivy@eea2d2f4c4102ded74204e4131c1417f444ae3fc # governed Trivy setup
 
       - name: Record promotion tool versions
         if: steps.candidate.outputs.skip == 'false'
-        run: python3 -B .github/scripts/tool_versions.py promotion reports/tool-versions.json
+        run: python3 -B -m scripts.pipeline.operations.tool_versions promotion reports/tool-versions.json
 
       - name: Re-scan both architectures before promotion
         if: steps.candidate.outputs.skip == 'false'
         env:
           IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
-        run: python3 -B .github/scripts/scan_images.py remote "$IMAGE_REF"
+        run: python3 -B -m scripts.pipeline.artifacts.scan_images remote "$IMAGE_REF"
 
       # M11: mesma visibilidade não-bloqueante do build — nunca falha o
       # job, roda mesmo se o re-scan acima já bloqueou a promoção.
@@ -152,7 +148,7 @@ jobs:
         if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
         env:
           IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
-        run: python3 -B .github/scripts/report_unfixed_cves.py remote "$IMAGE_REF"
+        run: python3 -B -m scripts.pipeline.release.report_unfixed_cves remote "$IMAGE_REF"
 
       - name: Preserve promotion scan evidence
         if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
@@ -167,6 +163,7 @@ jobs:
       # referência (sem baixar/re-subir camadas), preservando o manifest
       # list amd64+arm64 tal como foi publicado.
       - name: Promote to stable
+        id: promote
         if: steps.candidate.outputs.skip == 'false'
         env:
           IMAGE: ${{ steps.candidate.outputs.image }}
@@ -176,3 +173,101 @@ jobs:
           set -eu
           docker buildx imagetools create --tag "${IMAGE}:stable" "${IMAGE}@${DIGEST}"
           echo "promovido ${IMAGE}:${TAG} -> ${IMAGE}:stable"
+
+      # M11/M04: a evidência registra o que aconteceu de fato — promoveu, ou
+      # pulou e por quê, com a idade real do stable medida pelo push no ECR.
+      # `promoted` só vira verdadeiro depois que o push da tag terminou; o
+      # passo roda mesmo quando a promoção falhou, para não perder o motivo.
+      - name: Record promotion outcome
+        if: ${{ !cancelled() }}
+        env:
+          PROMOTED: ${{ steps.promote.outcome == 'success' }}
+          SKIPPED: ${{ steps.candidate.outputs.skip }}
+          REASON: ${{ steps.candidate.outputs.reason }}
+        run: |
+          set -eu
+          python3 -B - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path('reports/promotion-evidence.json')
+          # Sem o arquivo, a seleção do candidato não chegou a rodar (falha de
+          # AWS/ECR, por exemplo): isso é diferente de "pulou por não ter
+          # candidato" e a tabela do run precisa distinguir os dois.
+          evaluated = path.is_file()
+          evidence = json.loads(path.read_text()) if evaluated else {}
+          evidence['promoted'] = os.environ['PROMOTED'] == 'true'
+          evidence['skipped'] = os.environ['SKIPPED'] == 'true'
+          if not evaluated:
+              evidence['reason'] = 'gate de promoção não chegou a avaliar candidato (ver log)'
+          elif not evidence['promoted'] and not evidence['skipped']:
+              evidence['reason'] = ('candidato elegível, promoção não concluída: '
+                                    + (os.environ['REASON'] or evidence.get('reason') or 'ver log'))
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(evidence, indent=2) + '\n')
+          print(json.dumps(evidence, indent=2))
+          PY
+
+      - name: Preserve promotion outcome
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: promotion-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: reports/promotion-evidence.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  # M11/M04: mesma tabela do build, agora com a coluna de promoção preenchida.
+  summary:
+    name: Promotion summary
+    needs: promote
+    # Sem legs de promoção não há o que resumir; com qualquer resultado (mesmo
+    # falha parcial) a tabela é justamente o que interessa.
+    if: ${{ !cancelled() && needs.promote.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download promotion evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: evidence
+          pattern: 'promotion-*'
+          github-token: ${{ github.token }}
+
+      - name: List artifacts of this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          gh api "repos/${REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            > artifacts.json || echo '{}' > artifacts.json
+
+      - name: Publish per-framework promotion table
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 -B -m scripts.pipeline.operations.pipeline_summary evidence \
+            --frameworks "$FRAMEWORKS" --repository "$REPOSITORY" --run-id "$RUN_ID" \
+            --artifacts artifacts.json --title 'Promoção por framework' \
+            --markdown "$GITHUB_STEP_SUMMARY" --json reports/pipeline-summary.json
+
+      - name: Preserve the summary
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pipeline-summary-${{ github.run_attempt }}
+          path: reports/pipeline-summary.json
+          retention-days: 30
+          if-no-files-found: warn

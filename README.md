@@ -22,6 +22,12 @@ Imagens base **distroless multi-arquitetura** (`amd64`/`arm64`) para **Java, Pyt
   - [Build local](#build-local)
   - [Conclusão](#conclusão)
 
+As fronteiras de responsabilidade e as regras de organização estão em
+[`docs/repository-architecture.md`](docs/repository-architecture.md). O índice
+de automação fica em [`scripts/README.md`](scripts/README.md). Para contribuir,
+veja [`CONTRIBUTING.md`](CONTRIBUTING.md); o índice de documentação está em
+[`docs/README.md`](docs/README.md).
+
 ## O que é uma imagem Distroless?
 
 <p align="center">
@@ -30,7 +36,7 @@ Imagens base **distroless multi-arquitetura** (`amd64`/`arm64`) para **Java, Pyt
 
 Imagens "Distroless" contêm apenas o aplicativo e suas dependências de tempo de execução — sem gerenciador de pacotes, shell ou qualquer outra ferramenta que normalmente vem junto de uma distribuição Linux padrão. Restringir o container de produção precisamente ao que a aplicação precisa reduz a superfície de ataque e é uma prática recomendada, principalmente em ambientes produtivos.
 
-> Como não há shell nem ferramentas de troubleshooting na imagem, depurar um pod rodando distroless exige um mecanismo de debug fora da imagem da aplicação (ex.: um [Container Efêmero](https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/#ephemeral-container) anexado ao pod). Esse toolkit é mantido fora deste repositório — no ambiente do Itaú, existe um pod de troubleshooting corporativo próprio para isso.
+> Como não há shell nem ferramentas de troubleshooting na imagem, depurar um pod rodando distroless exige um mecanismo de debug fora da imagem da aplicação (ex.: um [Container Efêmero](https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/#ephemeral-container) anexado ao pod). O toolkit de referência está isolado em [`troubleshooting/`](troubleshooting/README.md), com ciclo de vida próprio; ele não integra as imagens base nem o pipeline de publicação delas.
 
 Neste repositório isso se traduz em quatro garantias concretas, já padronizadas em todas as imagens:
 
@@ -145,44 +151,45 @@ FROM <registro-ecr>/image-base-python3-14:010726-0152
 
 ## Estrutura do repositório
 
-Cada pasta tem uma responsabilidade única: `distroless/` define a base comum, `frameworks/` só adiciona o runtime de cada linguagem em cima dela (Node.js tem duas variantes — `run` e `dev`, as demais linguagens têm 2 arquivos cada, a versão LTS/estável atual e a anterior), `melange/` builda o pacote extra do `bundle.pem`, e `.github/` é o pipeline (build+scan+publish da tag imutável, e a promoção separada pra `stable`):
+A composição das imagens, as regras Python, as políticas e a orquestração
+ficam em áreas distintas. O [mapa de arquitetura](docs/repository-architecture.md)
+detalha responsabilidades, dependências e compatibilidade.
 
 ```text
 .
-├── .github
-│   ├── scripts
-│   │   └── find_promotion_candidate.py   # usado pelo promote-stable.yml pra achar o candidato à promoção
-│   └── workflows
-│       ├── validate-base-images.yml # build + scan nas duas arquiteturas, sem AWS
-│       ├── build-base-images.yml   # validação seguida de publicação autorizada na main
-│       ├── promote-stable.yml      # workflow reusável: gate de promoção (canário de soak) -> tag stable
-│       └── workflow.yml            # dispara os dois pipelines acima (push/PR/schedule)
-├── distroless
-│   └── image-base.yaml             # base comum: ca-certificates-bundle + bundle-pem-test (sem wolfi-base/apk/shell)
-├── frameworks
-│   ├── dotnet10.yaml                 # aspnet-10-runtime, variante "run" (sem SDK)
-│   ├── dotnet10-dev.yaml              # dotnet-10-sdk, só para estágio de build
-│   ├── dotnet8.yaml                  # dotnet-8-sdk (LTS, ainda não separado run/dev)
-│   ├── go1-25.yaml                   # go-1.25 (ainda não separado run/dev)
-│   ├── go1-26.yaml                   # variante "run": só a base, sem toolchain (binário estático)
-│   ├── go1-26-dev.yaml                # go-1.26, só para estágio de build
-│   ├── java21.yaml                   # openjdk-21-jre, variante "run" (sem javac/jmods)
-│   ├── java21-dev.yaml                # openjdk-21, só para estágio de build (JDK completo)
-│   ├── java25.yaml                   # openjdk-25 (LTS mais recente, ainda não separado run/dev)
-│   ├── nodejs22.yaml                 # nodejs-22, variante "run" (sem npm/busybox)
-│   ├── nodejs22-dev.yaml             # nodejs-22 + npm + busybox, só para estágio de build
-│   ├── nodejs24.yaml                 # nodejs-24, variante "run" (sem npm/busybox)
-│   ├── nodejs24-dev.yaml             # nodejs-24 + npm + busybox, só para estágio de build
-│   ├── python3-13.yaml               # python-3.13
-│   └── python3-14.yaml               # python-3.14 (mais recente)
-├── melange
-│   └── bundle-pem-test.yaml        # gera o apk com o bundle.pem (Mozilla CA bundle)
-├── .gitignore
-├── Makefile                        # build local (veja Build local)
+├── distroless/                    # base comum das imagens
+├── frameworks/                    # catálogo de runtimes e variantes -dev
+├── melange/                       # receita do pacote adicional de certificados
+├── scripts/
+│   ├── certificates/              # bundle corporativo, checksum e metadados
+│   └── pipeline/
+│       ├── catalog/               # validação das entradas
+│       ├── artifacts/             # OCI, digests e scans
+│       ├── runtime/               # contratos funcionais e readiness
+│       ├── release/               # candidatos, publicação e promoção
+│       ├── operations/            # saúde, tempos, resumos e versões
+│       └── governance/            # hardening, pins e contratos compartilhados
+├── policies/
+│   ├── operations/health.json     # alertas, donos, cron e retenção
+│   └── release/promotion-quarantine.json
+├── .github/
+│   ├── workflows/                 # gatilhos, permissões e composição de jobs
+│   └── scripts/                   # seis adaptadores para o executor publicado
+├── tests/
+│   ├── unit/pipeline/             # testes por domínio, sem infraestrutura
+│   ├── integration/               # certificados, TLS, adaptadores e executor
+│   └── runtime/                   # probes e projetos Go, Java e .NET nas imagens
+├── docs/                          # arquitetura, runbooks e evidências
+├── troubleshooting/               # toolkit de diagnóstico separado do produto
+├── CONTRIBUTING.md                # ambiente e fluxo de contribuição
+├── requirements-dev.txt           # dependência Python da automação
+├── Makefile                       # build local e comandos de verificação
 └── README.md
-
-6 directories, 21 files
 ```
+
+Validação rápida: `make test-unit lint-local`. Validação completa da automação:
+`make check`, com o checkout compartilhado preparado conforme o guia de contribuição.
+Os required checks do CI mantêm os nomes `test` e `lint-workflows`.
 
 ## Como as imagens são compostas
 
@@ -255,15 +262,17 @@ flowchart TD
     M --> A["Apko: layout OCI por framework"]
     A --> S["Trivy: amd64 + arm64<br/>relatórios JSON e digests OCI"]
     S --> G["Todos os frameworks selecionados aprovados"]
-    G -->|"somente execução autorizada na main"| PUB["Job de publicação<br/>OIDC + cópia OCI + assinatura/provenance"]
+    G --> F["Contrato funcional por framework<br/>projeto mínimo multi-stage<br/>amd64 + arm64 sobre o candidato"]
+    F -->|"somente execução autorizada na main"| PUB["Job de publicação<br/>OIDC + cópia OCI + assinatura/provenance"]
     PUB --> ECR[("ECR: tag de build")]
+    PUB --> T["Tabela por framework<br/>no resumo do run"]
     H["Schedule horário"] --> P["promote-stable.yml"]
     ECR --> P
     P --> SOAK["Candidato elegível + re-scan<br/>amd64 + arm64 por digest"]
     SOAK --> STABLE["stable"]
 ```
 
-O build do CI usa `apko build` uma única vez por framework para produzir um layout OCI multi-arquitetura. [oci_artifact.py](.github/scripts/oci_artifact.py) verifica hashes/tamanhos dos blobs, presença de amd64/arm64 e coerência dos configs, preservando o índice original em um layout transportável. [scan_images.py](.github/scripts/scan_images.py) fornece ao Trivy uma visão com apenas o manifest da arquitetura solicitada e confere a arquitetura no relatório: o teste real mostrou que somente `--platform` não bastava para layouts OCI multi-arquitetura no Trivy 0.72.0.
+O build do CI usa `apko build` uma única vez por framework para produzir um layout OCI multi-arquitetura. [oci_artifact.py](scripts/pipeline/artifacts/oci_artifact.py) verifica hashes/tamanhos dos blobs, presença de amd64/arm64 e coerência dos configs, preservando o índice original em um layout transportável. [scan_images.py](scripts/pipeline/artifacts/scan_images.py) fornece ao Trivy uma visão com apenas o manifest da arquitetura solicitada e confere a arquitetura no relatório: o teste real mostrou que somente `--platform` não bastava para layouts OCI multi-arquitetura no Trivy 0.72.0.
 
 Relatórios JSON e digests dos manifests ficam nos artifacts `build-scans-<framework>-<tentativa>` por 30 dias. O layout aprovado, sua evidência e os SBOMs são transferidos em `validated-oci-<framework>` por três dias. Uma falha em qualquer arquitetura impede a disponibilização desse artifact para publicação.
 
@@ -273,23 +282,35 @@ A validação usa matrix com `fail-fast: false`. **A publicação é independent
 
 O gate mantém `--ignore-unfixed` e severidades `CRITICAL,HIGH,MEDIUM,LOW`, além do scan de segredos. O scan aprovado representa apenas a política configurada e os dados disponíveis ao Trivy naquele momento. A triagem automática de CVEs permanece pausada; sua futura reativação deverá consumir os relatórios JSON, pois as tabelas em logs deixaram de ser a saída principal.
 
-QEMU continua restrito ao job melange, que executa comandos no sandbox do pacote. Apko compõe os pacotes sem executar os runtimes. Os testes funcionais das imagens continuam pendentes em M08.
+**Execução funcional antes de publicar (M08/M10):** entre a validação e a publicação, `test-runtime-images.yml` executa o contrato funcional de cada framework nas duas plataformas, sobre o próprio artifact candidato — sem rebuild da imagem base. Node e Python rodam um probe com o interpretador da imagem; Go, Java e .NET têm projeto mínimo e Dockerfile multi-stage versionados em [tests/runtime/projects](tests/runtime/projects), construídos com a variante `-dev` do candidato no estágio de build e a variante de runtime no estágio final. O contrato confere versão do runtime, UID/GID 10000 herdados da imagem, raiz somente leitura com duas áreas graváveis explícitas, parsing do bundle de CAs da imagem e TLS positivo **e** negativo com CA de teste. **A publicação de cada framework exige o contrato daquele framework aprovado nas duas arquiteturas:** aprovação de build/scan não substitui execução funcional, e evidência ausente é falha, não aprovação. A cobertura é decidida em código versionado ([runtime_images.py](scripts/pipeline/runtime/runtime_images.py)) — os frameworks ainda sem variante `-dev` (`go1-25`, `java25`, `dotnet8`) publicam com o motivo registrado no log e na tabela do run. Detalhes, mecanismos de confiança TLS por linguagem e limites em [tests/runtime/README.md](tests/runtime/README.md).
+
+QEMU serve ao job melange (comandos no sandbox do pacote) e ao contrato funcional, que executa a arquitetura não nativa emulada e **registra emulação e execução nativa separadamente**. Apko continua compondo pacotes sem executar os runtimes.
+
+**Resultado e saúde visíveis (M11/M04):** cada run de build e de promoção publica no `GITHUB_STEP_SUMMARY` uma tabela por framework com digest, arquiteturas, resultado do scan, CVEs sem correção, contrato funcional, publicação, promoção, motivo de bloqueio/skip e links diretos para os artifacts. `bloqueado` (CVE com correção), `CVEs sem correção` (informativo) e `erro de infraestrutura` são estados distintos — o último nunca é lido como aprovação. Um workflow diário separado ([pipeline-health.yml](.github/workflows/pipeline-health.yml)) mede idade de `stable` e última publicação por framework, execução esperada x real de cada cron, atraso de fila e disponibilidade de todos os pins, alertando pela falha do próprio job. Política de limites, donos, canal e retenção em [docs/m11-m04-operational-health.md](docs/m11-m04-operational-health.md).
 
 
 ## Checks obrigatórios, revisão e endurecimento (M12/M16)
 
 Merge na `main` exige, sem exceção para administradores (`enforce_admins`):
 
-- **`test`** — 81 testes de pipeline e 13 de certificados, sem AWS.
-- **`lint-workflows`** — `actionlint` nos seis workflows mantidos à mão, mais
-  [lint_workflow_hardening.py](.github/scripts/lint_workflow_hardening.py):
-  checkout sem `persist-credentials: false`, expressão `${{ }}` dentro de um
+- **`test`** — testes unitários de pipeline, contratos entre repositórios e
+  integração de certificados, sem AWS.
+- **`lint-workflows`** — `actionlint` nos oito workflows mantidos à mão, mais
+  três lints offline:
+  [lint_workflow_hardening.py](scripts/pipeline/governance/lint_workflow_hardening.py)
+  (checkout sem `persist-credentials: false`, expressão `${{ }}` dentro de um
   `run`, job executor sem `timeout-minutes`, workflow sem `permissions` no
-  topo ou Action externa sem SHA completo reprovam o check.
+  topo, Action externa sem SHA completo);
+  [pin_inventory.py](scripts/pipeline/governance/pin_inventory.py) `lint` (pin externo
+  sem gerenciador de atualização, ou o mesmo insumo com digests diferentes em
+  arquivos diferentes); e
+  [operational_health.py](scripts/pipeline/operations/operational_health.py) `lint`
+  (retenção declarada na política divergente do `retention-days` real, cron
+  agendado sem declaração na política).
 - **Uma aprovação**, com revisão de code owner nos caminhos do
-  [CODEOWNERS](.github/CODEOWNERS) (`workflows`, `actions`, `scripts`,
-  `tests`, `melange`, `Makefile`). Aprovações são descartadas a cada novo
-  push.
+  [CODEOWNERS](.github/CODEOWNERS) (manifests, workflows, actions,
+  automação, testes, políticas de dependência, `melange` e `Makefile`).
+  Aprovações são descartadas a cada novo push.
 
 Os dois checks rodam **sem filtro de path**: um required check com filtro
 nunca dispara para um PR fora do escopo e fica pendente para sempre em vez de
@@ -297,15 +318,16 @@ aprovar. São rápidos (segundos), então um PR só de documentação recebe
 resultado definido.
 
 Entradas de execução manual passam por
-[validate_inputs.py](.github/scripts/validate_inputs.py) **antes** de
+[validate_inputs.py](scripts/pipeline/catalog/validate_inputs.py) **antes** de
 qualquer credencial AWS: nome único pertencente ao catálogo
 `frameworks/*.yaml`, soak finito e não negativo, digest `sha256:<64 hex>`. O
 input rejeitado não é ecoado de volta no log. Nenhum input é interpolado
 dentro de um `run`; todos chegam por `env:` e são usados com aspas.
 
 No lado da plataforma estão ativos secret scanning, push protection e
-`sha_pinning_required` (o repositório já fixava tudo por SHA completo; agora
-o GitHub exige). O token padrão do Actions é `read` e não pode aprovar PRs.
+`sha_pinning_required` para Actions diretas. Os reusable workflows também
+usam SHA completo, conferido no checkout de integração do CI. O token
+padrão do Actions é `read` e não pode aprovar PRs.
 Detalhes, estado anterior e pendências em
 [docs/m09-m16-review.md](docs/m09-m16-review.md).
 
@@ -313,7 +335,7 @@ Detalhes, estado anterior e pendências em
 
 A tag `stable` **não** é publicada no mesmo run que builda a imagem. `promote-stable.yml` roda separadamente a cada hora (minuto 17) e só promove um build para `stable` se, decorrida a janela de soak, um **re-scan** do mesmo digest continuar limpo:
 
-1. Lista as imagens do repositório ECR e seleciona o índice OCI/Docker com tag de build válida (`ddmmaa-hhmm`, com sufixo opcional `-r<run_id>-a<tentativa>`) mais recente entre os que já completaram o soak. Descarta o digest já marcado como `stable` e candidatos com data de push anterior ou igual à dele (`.github/scripts/find_promotion_candidate.py`). Um build recente ainda em soak não impede a seleção de outro elegível.
+1. Lista as imagens do repositório ECR e seleciona o índice OCI/Docker com tag de build válida (`ddmmaa-hhmm`, com sufixo opcional `-r<run_id>-a<tentativa>`) mais recente entre os que já completaram o soak. Descarta o digest já marcado como `stable` e candidatos com data de push anterior ou igual à dele ([find_promotion_candidate.py](scripts/pipeline/release/find_promotion_candidate.py)). Um build recente ainda em soak não impede a seleção de outro elegível.
 2. Inspeciona o índice e exige exatamente `linux/amd64` e `linux/arm64`. Verifica assinatura cosign com identidade exata do workflow `build-base-images.yml@refs/heads/main` e provenance GitHub vinculada ao signer workflow e à source ref `refs/heads/main`. Falhas e evidências ausentes bloqueiam a promoção.
 3. Re-escaneia esse digest com Trivy em `linux/amd64` e `linux/arm64` (`--ignore-unfixed`). Uma falha em qualquer arquitetura bloqueia a promoção. Em seguida, um scan **separado e não-bloqueante** (`report_unfixed_cves.py`, M11) roda sem `--ignore-unfixed`: CVEs sem correção disponível continuam invisíveis pro gate de propósito (bloquear por algo que ninguém pode corrigir ainda não ajuda), mas passam a aparecer em `unfixed-cves-summary.json`, nunca falhando o job. Os relatórios e a referência por digest ficam nos artifacts `promotion-scans-<framework>-<tentativa>` por 30 dias.
 4. Se o re-scan continuar limpo, promove com `docker buildx imagetools create --tag <imagem>:stable <imagem>@<digest>` — retagueia o índice multi-arch por referência, sem baixar/re-subir camadas.
@@ -323,7 +345,7 @@ Isso é um canário de **tempo/CVE**, não um canário de tráfego real contra a
 A seleção inicial usa metadados ECR; o gate posterior valida plataformas, assinatura e provenance por digest. O verificador espera que o workflow assinante esteja no mesmo repositório GitHub informado ao script; chamadas externas precisam alinhar explicitamente essa política à localização do workflow assinante. A seleção e a atualização de `stable` são serializadas por role/região/framework dentro do mesmo repositório GitHub, tanto no dispatch direto quanto no workflow reusável; atualizações externas não participam desse controle. Os testes dos scripts rodam em PRs/pushes que alterem os scripts e antes da autenticação AWS na promoção. Para executá-los localmente, sem Docker ou AWS:
 
 ```bash
-python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+python3 -B -m unittest discover -s tests/unit -t . -p 'test_*.py' -v
 ```
 
 **SLA de patch (M11 — formalizado com medições reais, não estimativa):**
@@ -349,7 +371,7 @@ Se um build promovido apresentar problema depois da promoção (ex.: CVE divulga
    - reescaneia as duas arquiteturas com o banco de CVE atual — uma CVE nova no digest antigo bloqueia a recuperação; correção do gate por exceção exige política explícita, não esse workflow;
    - move `stable` com `docker buildx imagetools create` (mesmo mecanismo da promoção normal, sem rebuild) e confirma por leitura de volta independente;
    - grava um `recovery-evidence.json` (operador = `github.actor`, motivo, digest anterior/novo, run) como artifact.
-3. **Abrir um PR** adicionando o digest retirado a `.github/promotion-quarantine.json` (o job imprime o trecho JSON pronto pra colar). Sem isso, o build retirado continua sendo o mais recente por timestamp em `find_promotion_candidate.py`, e o próximo ciclo de promoção o selecionaria de novo — desfazendo a recuperação. A entrada de quarentena some quando um build mais novo e aprovado for promovido de verdade (a partir daí o timestamp de `stable` já avança e a exclusão explícita deixa de ser necessária).
+3. **Abrir um PR** adicionando o digest retirado a `policies/release/promotion-quarantine.json` (o job imprime o trecho JSON pronto pra colar). Sem isso, o build retirado continua sendo o mais recente por timestamp em `find_promotion_candidate.py`, e o próximo ciclo de promoção o selecionaria de novo — desfazendo a recuperação. A entrada de quarentena some quando um build mais novo e aprovado for promovido de verdade (a partir daí o timestamp de `stable` já avança e a exclusão explícita deixa de ser necessária).
 
 A recuperação e uma promoção concorrente do mesmo framework compartilham o grupo de concorrência de `promote-stable.yml` — nunca correm ao mesmo tempo. Restaurar a imagem base **não** reconstrói nem reverte automaticamente aplicações consumidoras; isso é responsabilidade do runbook de deploy de cada time.
 
@@ -435,8 +457,25 @@ Isso não substitui a imagem final da sua aplicação — é o ponto de partida 
 
 ## Dependências do pipeline e tags
 
-As Actions diretas dos workflows de build/validação/promoção estão fixadas por SHA; apko, melange e Skopeo usam digests. Dependabot propõe atualizações semanais de Actions. A atualização dos digests das ferramentas ainda exige revisão manual, incluindo o Makefile; automação e política de atualização completas permanecem em M09.
+As Actions diretas dos workflows estão fixadas por SHA completo; apko, melange, Skopeo e actionlint usam digests; a versão do Trivy é fixada por tag de release. Os reusable workflows corporativos também usam SHA completo, conferido no CI. **Todo pin tem um gerenciador que propõe sua atualização** — Dependabot para Actions, Renovate para os digests de imagem (workflows, Makefile e o executor de contratos) e para `TRIVY_VERSION` — e um lint offline no check obrigatório reprova pin sem gerenciador ou o mesmo insumo com valores divergentes entre arquivos ([pin_inventory.py](scripts/pipeline/governance/pin_inventory.py)).
+
+As versões **efetivas** do que rodou ficam na evidência de cada etapa ([tool_versions.py](scripts/pipeline/operations/tool_versions.py)): apko/Trivy na validação, cosign/AWS/Docker/Skopeo na publicação, cosign/Trivy/AWS/gh/buildx na promoção, mais `python3`/`git` e a identificação da imagem do runner hospedado — que muda sem passar por nenhum pin deste repositório. Só comandos de versão em allowlist, sem dump de ambiente.
+
+O workflow diário de saúde confere que **cada pin ainda existe na origem** (commit da Action, manifest do digest, release do Trivy) e reporta a idade das PRs de atualização abertas. Um pin recolhido do registry quebra o próximo build; melhor descobrir num job de saúde do que numa publicação.
 
 O workflow de publicação configura tags imutáveis no ECR, com exceção exata para `stable`, incluindo repositórios existentes. As tags novas incluem run ID e tentativa. A compatibilidade das assinaturas/provenance com essa configuração deve ser validada no workflow autenticado antes da liberação. Reexecuções parciais do publicador reutilizam `validated-oci-<framework>` aprovado no mesmo run, independentemente de `run_attempt`. Se a validação for reexecutada, o artifact é substituído somente após o novo scan passar (`overwrite: true`); uma validação malsucedida bloqueia a publicação pelo `needs: validate`, mesmo que exista um artifact anterior. O repositório melange também permite substituição em reexecuções completas. Artifacts expirados exigem nova validação. Os relatórios de scan continuam separados por tentativa.
 
 Para executar as suítes de regressão do pipeline e dos certificados, consulte [tests/README.md](tests/README.md).
+
+## Workflows compartilhados
+
+A validação Apko/Melange e a execução dos contratos de runtime são consumidas
+via o commit publicado `081270ccf18ee4d98da23f22f761846d29f71486` de
+`alric-corp/itau-xj7-reusable-workflows`. A instalação do Trivy é uma
+composite action comum à validação, promoção e recuperação. Gatilhos, catálogo,
+scripts/testes de domínio e decisões de release permanecem neste repositório.
+
+Veja a [divisão de responsabilidades, contrato e adoção](docs/m09-m12-reusable-workflows.md).
+Para os checks locais, defina `REUSABLE_WORKFLOWS_PATH` apontando para um checkout
+da biblioteca no release `v1`; no CI o SHA efetivamente resolvido é registrado e
+validado automaticamente.

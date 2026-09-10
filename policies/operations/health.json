@@ -1,0 +1,57 @@
+{
+  "$comment": "Política de saúde operacional e retenção de evidências (M11/M04/M15). Alterar aqui exige revisão de code owner: este arquivo é o que o job de saúde usa para decidir o que é alerta, e o lint offline compara a retenção declarada com o retention-days real dos workflows. Ver docs/m11-m04-operational-health.md.",
+  "owner": {
+    "responsible": "@alric-corp/github_xj7_maintainer",
+    "escalation": "@vigcf",
+    "$comment": "Dono da POC. Para produção, trocar pelo time verificado do itau-corp, o mesmo movimento já previsto no CODEOWNERS."
+  },
+  "channel": {
+    "implemented": "github-actions-run",
+    "target": ".github/workflows/pipeline-health.yml",
+    "external_destination": null,
+    "$comment": "Hoje o alerta é a falha deste job mais a tabela no resumo do run — notificação que o GitHub já entrega a quem acompanha o repositório, sem novo segredo nem integração. Destino externo (canal corporativo, e-mail de plantão) ainda NÃO definido: preencher external_destination e só então implementar o envio, na ordem que a RFC pede (destino e política primeiro, notificação depois)."
+  },
+  "thresholds": {
+    "window_days": 7,
+    "publication_age_hours": 30,
+    "stable_age_hours": 48,
+    "queue_delay_p90_seconds": 900,
+    "update_pr_stale_days": 7,
+    "$comment": "publication_age_hours = 24h do build diário + 6h de margem: alerta quer dizer 'dois ciclos diários seguidos sem publicar este framework'. stable_age_hours = 24h + soak de 6h + 18h de margem para a promoção horária. Nenhum destes números é SLA prometido a consumidor: são limites internos de alerta, derivados da cadência real do pipeline. Os limites de lacuna por cron ficam em `schedules`, porque cada cron tem cadência própria."
+  },
+  "schedules": {
+    "$comment": "`job` é o job condicionado ao cron em workflow.yml — a API do GitHub não expõe `github.event.schedule`, então a atribuição de cada run agendado sai de qual job rodou de fato (o outro aparece `skipped`). `gap_alert_hours` é a lacuna sem nenhum run deste cron que caracteriza 'paramos de atualizar'. Medido em 09/09/2026 na conta real: o agendador do GitHub entregou 7 runs agendados em ~40h, com atrasos de 29s a 4h36m — a cadência nominal do cron NÃO é a cadência real, e os limites abaixo refletem a entrega observada, não a nominal. O lint offline exige que este bloco e o workflow declarem os mesmos crons.",
+    "0 3 * * *": {
+      "job": "build-base-images",
+      "purpose": "build diário",
+      "gap_alert_hours": 30
+    },
+    "17 * * * *": {
+      "job": "promote-stable",
+      "purpose": "promoção horária",
+      "gap_alert_hours": 12
+    }
+  },
+  "retention_days": {
+    "melange-repo": 1,
+    "validated-oci-": 3,
+    "build-scans-": 30,
+    "publication-": 30,
+    "promotion-scans-": 30,
+    "promotion-": 30,
+    "recovery-scans-": 30,
+    "recovery-evidence-": 30,
+    "runtime-": 30,
+    "pipeline-summary-": 30,
+    "pipeline-health-": 30,
+    "$comment": "Finalidade de cada prazo: repositório melange (1d) é insumo intermediário, reconstruído em minutos; OCI aprovado (3d) é a janela de retry da publicação sem revalidar; evidências de scan, publicação, contrato funcional, promoção, recuperação e saúde (30d) cobrem auditoria e o runbook de recuperação do M15. retention-days é prazo de expiração de artifact, não backup: uma reexecução completa produz digests novos e não recupera o artifact vencido (achado do R03). A recuperação de stable por digest depende do ECR, não destes artifacts."
+  },
+  "exceptions": {
+    "dotnet8": {
+      "reason": "scan bloqueia com CVEs cuja correção o repositório Wolfi consultado não entrega: o advisory aponta 8.0.129-r1, mas o APKINDEX de packages.wolfi.dev/os só publica até dotnet-8-sdk 8.0.127-r0 (conferido em 09/09/2026). Rebuild não resolve; depende de a Wolfi publicar o pacote corrigido ou de retirar dotnet8 do catálogo.",
+      "owner": "@alric-corp/github_xj7_maintainer",
+      "review_by": "2026-10-09",
+      "$comment": "Exceção reportada como conhecida em vez de alerta novo a cada run, para não treinar quem lê a ignorar o alerta. A data de revisão é obrigatória: exceção vencida gera alerta própria."
+    }
+  }
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>runtime-contract</AssemblyName>
+    <RootNamespace>RuntimeContract</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Sem ICU: a imagem de runtime é distroless e não garante os dados de
+         globalização; sem isso o processo falharia na inicialização. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Restore offline: o projeto só referencia o framework compartilhado,
+         que já vem no SDK. Nenhuma fonte NuGet é consultada (ver NuGet.config)
+         e o build roda sem rede nenhuma. -->
+    <RestorePackages>false</RestorePackages>
+  </PropertyGroup>
+</Project>

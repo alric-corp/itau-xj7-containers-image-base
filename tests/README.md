@@ -1,78 +1,67 @@
 # Testes de regressão
 
-As duas suítes rodam no workflow `Test image pipeline scripts`, em PRs e pushes
-na `main` que alterem os scripts, os testes de certificados ou o próprio workflow.
-O job tem apenas `contents: read` e não autentica na AWS.
+O workflow `test-promotion.yml` executa as verificações em todo PR e push para
+`main`, sem filtro de paths e com `contents: read`. Ele usa os mesmos alvos
+Make disponíveis localmente. Preparação do ambiente e checkout do executor:
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
+| Camada | Local | Dependências |
+| --- | --- | --- |
+| Unitária | `unit/pipeline/` | Python, PyYAML e fixtures locais; sem Docker, AWS, sockets ou rede |
+| Integração | `integration/` | Certificados sintéticos/OpenSSL, TLS local, CLIs reais e checkout do executor fixado |
+| Runtime | `runtime/` | Docker, OCI validado, OpenSSL e execução/emulação das duas arquiteturas |
 
 ```sh
-python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
-python3 -B -m unittest discover -s tests/certificates -p 'test_*.py' -v
+make test-unit
+make test-integration
+make check
 ```
 
-## Pipeline: 46 testes
+Os testes Python são pacotes regulares com `__init__.py`; a descoberta parte
+da camada e usa `-t .`. Isso evita colisões de nomes entre testes e imports
+que dependem do diretório de execução.
 
-Quarenta testes preservados do PR #1, commit `9704e46`, junto dos módulos
-que exercitam, e seis novos testes da conferência após publicação.
-Cobrem seleção cronológica de candidatos, prevenção de rollback, identidade
-por digest, integridade OCI, scans nas duas arquiteturas e verificação de
-assinatura/provenance. As chamadas a Docker, Trivy, cosign e GitHub são
-substituídas nos testes; não exigem instalação dessas ferramentas nem rede.
+## Regras de pipeline
 
-`find_promotion_candidate.py` continua sendo chamado pelo workflow de promoção
-existente. Os novos módulos de scan, OCI e verificação são preservados com seus
-testes; esta entrega conecta esses módulos aos workflows de publicação/promoção.
-A execução autenticada na `main` continua pendente até a integração e validação.
-Seis testes adicionais conferem a identidade do índice e dos manifests lidos
-de volta do registry após publicação.
+A suíte unitária cobre candidatos e soak, prevenção de rollback, identidade
+por digest, OCI, scan nas duas arquiteturas, assinatura/provenance, entradas,
+hardening, pins, cache, readiness, contratos funcionais, resumos e saúde.
+Ferramentas e APIs externas são substituídas nos testes.
 
-## Certificados: 13 testes
+Os testes de arquitetura verificam a direção das dependências, os pacotes de
+domínio, a descoberta dos testes, a ausência de regras nos adaptadores e a
+cobertura dos arquivos movidos pelos filtros de CI.
 
-A suíte executa `scripts/certificados.sh` de verdade. Gera CAs X.509 sintéticas
-temporárias com OpenSSL, incluindo um bundle com múltiplos certificados, e
-substitui `aws` e `curl` por cópias locais. Não lê os buckets pessoais/corporativos,
-o cache de sessões anteriores ou o bundle Mozilla na internet. Chaves de teste,
-certificados, lockfiles e saídas são removidos ao terminar.
+## Integração
 
-Dependências: Python 3, Bash, OpenSSL com `req -addext`, jq, sha256sum e GNU date.
-No macOS, a suíte usa `gdate` quando disponível; AWS CLI e curl não são necessários
-para os testes. Dependências ausentes falham explicitamente, sem ignorar a suíte.
+- Os testes do executor compartilhado verificam SHA, conteúdo, inputs, Trivy,
+  retenção e os caminhos de scripts usados pelo release publicado. Checkout
+  ausente ou divergente falha o check.
+- Os adaptadores antigos são executados como CLIs sem `PYTHONPATH`. A API de
+  runtime usada pelo workflow compartilhado também é importada em processo real.
+- O teste TLS cria certificado e servidor locais e comprova confiança na CA e
+  resposta após readiness; requer permissão para abrir uma porta local.
+- Certificados executam `scripts/certificates/certificados.sh` de verdade com
+  CAs sintéticas, incluindo bundle com múltiplos certificados. `aws` e `curl`
+  são substituídos por cópias locais; chaves e saídas temporárias são removidas.
 
-Cobertura:
+A suíte de certificados exige Bash, OpenSSL com `req -addext`, jq, sha256sum e
+GNU date (`gdate` no macOS). Dependência ausente falha explicitamente.
+Ela cobre baseline e JSON, checksum repetível, lockfile ausente/relativo/vazio/
+duplicado/malformado, rotação bloqueada até pin explícito, PEM sem newline,
+metadados divergentes e falha de gravação durante o pin.
 
-- Baseline, JSON de saída, leitura dos bundles pelo OpenSSL e pin repetível.
-- Lockfile relativo, ausente, vazio, incompleto, duplicado ou malformado.
-- Rotação bloqueada antes do pin e aceita depois da atualização explícita.
-- Última linha sem newline no manifesto e em certificados/fragmentos PEM.
-- Metadados divergentes e falha simulada de gravação dos metadados no pin.
+`--pin` atualiza checksum e metadados sequencialmente; não é uma transação
+atômica. Se o segundo arquivo falhar, a verificação normal bloqueia o par
+divergente. Recupere os dois pelo Git ou repita o pin após revisão.
 
-Os testes locais não substituem rebuild melange/apko, integração S3, revisão
-humana da legitimidade das CAs ou testes TLS dos runtimes consumidores.
-O `--pin` atualiza dois arquivos sequencialmente; não é uma transação atômica.
-Uma falha na segunda cópia pode deixar o par divergente e a verificação normal
-bloqueia seu uso. Recupere ambos pelo Git ou repita o pin após revisão.
+## Contratos de imagens reais
 
-## Trabalho preservado para retomada
+Os [contratos runtime](runtime/README.md) constroem/rodam aplicações reais nas
+imagens candidatas e registram execução nativa e emulada. Fazem parte do
+pipeline de imagens, não de `make check`.
 
-O PR #1 (`improvements/image-pipeline-validation`) contém mudanças adicionais
-que a entrega de testes preservou para retomada. A entrega OCI agora traz os
-workflows, as ferramentas fixadas e a documentação; as validações de integração
-abaixo permanecem pendentes conforme a RFC-013. O histórico permanece em:
-
-- https://github.com/alric-corp/itau-xj7-containers-image-base/pull/1
-- https://github.com/alric-corp/itau-xj7-containers-image-base/tree/9704e46ac758298b46ba107d4236f1edf9cc8bf1
-
-Antes de integrar o restante, retomar:
-
-1. Validação sem AWS em ambas as arquiteturas e publicação do mesmo artifact OCI,
-   sem rebuild; verificar execução autenticada e retry parcial.
-2. Promoção por digest com assinatura/provenance, re-scan, serialização e soak;
-   comprovar integração pelo workflow autenticado.
-3. Validar imutabilidade ECR com exceção para stable, tags únicas e atualização
-   das dependências fixadas. A trust policy OIDC já foi corrigida e testada
-   para PR interno/main; o teste específico de fork continua pendente.
-4. Falha de scan do .NET 8 e seleção do lote publicável.
-5. Atualização da RFC-013 e README para refletir somente controles integrados.
-
-As mudanças locais de Makefile e melange para fixar o bundle Mozilla não estavam
-no PR #1 e não estão nesta extração. O rebuild local desse pin foi relatado na sexta entrega da RFC; sua
-integração no repositório continua pendente.
+Testes locais não substituem build Melange/Apko, integração S3/ECR, revisão da
+legitimidade de CAs, promoção/recuperação de stable ou validação TLS no
+ambiente consumidor. Histórico e aceites pendentes ficam na
+[RFC-013](../RFC-013-Image-Base-Completa-com-Mermaid.md).

@@ -15,7 +15,7 @@ workflow gerado de triagem.
   passo desses jobs faz push por Git.
 - Guard de entrada antes de qualquer credencial AWS, compartilhado por
   build, validação, promoção e recuperação
-  ([validate_inputs.py](../.github/scripts/validate_inputs.py)): nomes únicos
+  ([validate_inputs.py](../scripts/pipeline/catalog/validate_inputs.py)): nomes únicos
   do catálogo `frameworks/*.yaml`, soak finito e não negativo (zero continua
   válido para os testes autenticados já previstos) e digest no formato
   `sha256:<64 hex>`. A recuperação passava por uma checagem própria em shell
@@ -27,7 +27,7 @@ workflow gerado de triagem.
   chegar por `env:` e ser usadas com aspas. Os dois vinham, em última
   instância, de input de `workflow_dispatch`.
 - Regra virou lint, não faxina de uma vez só:
-  [lint_workflow_hardening.py](../.github/scripts/lint_workflow_hardening.py)
+  [lint_workflow_hardening.py](../scripts/pipeline/governance/lint_workflow_hardening.py)
   roda no check obrigatório `lint-workflows` e reprova checkout sem
   `persist-credentials: false`, expressão dentro de `run`, job executor sem
   `timeout-minutes`, workflow sem `permissions` no topo e Action externa sem
