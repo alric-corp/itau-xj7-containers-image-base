@@ -20,9 +20,11 @@ jobs:
         run: exit 1
 
       - name: Custom if, no always/failure/cancelled (like promote-stable.yml today)
-        if: ${{ true }}
-        run: echo "RAN: custom-if-without-always"
+        if: ${{ github.ref != '' }}
+        run: |
+          echo "RAN custom-if-without-always"
 
       - name: Custom if with cancelled guard (the proposed fix)
-        if: ${{ !cancelled() && true }}
-        run: echo "RAN: custom-if-with-cancelled-guard"
+        if: ${{ !cancelled() && github.ref != '' }}
+        run: |
+          echo "RAN custom-if-with-cancelled-guard"
