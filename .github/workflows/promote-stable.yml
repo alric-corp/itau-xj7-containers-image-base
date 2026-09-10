@@ -141,8 +141,15 @@ jobs:
 
       # M11: mesma visibilidade não-bloqueante do build — nunca falha o
       # job, roda mesmo se o re-scan acima já bloqueou a promoção.
+      # M12: `if: <condição>` sem always()/failure()/cancelled() herda
+      # implicitamente `success()` do GitHub Actions — sem o `!cancelled()`
+      # aqui, este passo era pulado quando o re-scan falhava, ao contrário
+      # do que o comentário acima sempre afirmou. Confirmado empiricamente
+      # num runner real antes da correção (PR #43, descartável): o mesmo
+      # padrão sem o guard ficou `skipped` depois de um passo anterior
+      # falhar; com o guard, rodou.
       - name: Report CVEs without an available fix (informational)
-        if: steps.candidate.outputs.skip == 'false'
+        if: ${{ !cancelled() && steps.candidate.outputs.skip == 'false' }}
         env:
           IMAGE_REF: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
         run: python3 -B .github/scripts/report_unfixed_cves.py remote "$IMAGE_REF"

@@ -148,7 +148,12 @@ jobs:
             "${REGISTRY}/image-base-${FRAMEWORK}@${DIGEST}"
 
       # M11: mesma visibilidade não-bloqueante — nunca falha o job.
+      # M12: sem `if:` nenhum, este passo herdava `success()` implícito e
+      # era pulado se o re-scan acima falhasse — mesmo bug de
+      # promote-stable.yml, confirmado empiricamente num runner real (PR
+      # #43, descartável) antes da correção.
       - name: Report CVEs without an available fix (informational)
+        if: ${{ !cancelled() }}
         env:
           FRAMEWORK: ${{ inputs.framework }}
           DIGEST: ${{ inputs.digest }}
