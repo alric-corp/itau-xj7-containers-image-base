@@ -33,6 +33,63 @@ jobs:
     with:
       frameworks: ${{ inputs.frameworks }}
 
+  # M08/M10: cobertura funcional é decidida em código versionado
+  # (runtime_images.plan), não pela ausência de um artifact. Um contrato
+  # compilado só entra na matriz se o par -dev estiver no MESMO lote — o
+  # estágio de build é o artifact candidato, não uma imagem de registry.
+  plan:
+    name: Plan functional contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      contracts: ${{ steps.contracts.outputs.planned }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow inputs before privileged operations
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+        run: python3 -B -m scripts.pipeline.catalog.validate_inputs
+
+      - name: Resolve which frameworks have an executable contract in this batch
+        id: contracts
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+        run: |
+          set -eu
+          python3 -B -m scripts.pipeline.runtime.runtime_images --plan "$FRAMEWORKS" | tee contract-plan.json
+          python3 -B - <<'PY'
+          import json
+          import os
+          plan = json.load(open('contract-plan.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"planned={json.dumps(plan['planned'])}\n")
+          for framework, reason in plan['skipped'].items():
+              print(f'::notice::{framework}: contrato funcional não executado — {reason}')
+          PY
+
+  # Execução funcional sobre o artifact candidato, antes de publicar:
+  # aprovação de build/scan não substitui rodar a imagem.
+  runtime-contract:
+    name: Functional contract
+    needs: [validate, plan]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.contracts != '[]'
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: ${{ fromJSON(needs.plan.outputs.contracts || '[]') }}
+    uses: ./.github/workflows/test-runtime-images.yml
+    with:
+      framework: ${{ matrix.framework }}
+
   build-push:
     name: Build & push ${{ matrix.framework }}
     # M13: `needs: validate` sozinho pularia TODA a matriz de publicação se
@@ -48,7 +105,7 @@ jobs:
     # framework continua visível e sem publicação, só não derruba os outros
     # frameworks do lote.
     if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    needs: validate
+    needs: [validate, runtime-contract]
     runs-on: ubuntu-latest
     # Observado: 32-110s por framework num run real de 11 frameworks (M14);
     # dotnet10 (maior artifact) foi o mais lento. Margem cobre variância de
@@ -67,7 +124,7 @@ jobs:
       - name: Validate workflow inputs before privileged operations
         env:
           FRAMEWORKS: ${{ inputs.frameworks }}
-        run: python3 -B .github/scripts/validate_inputs.py
+        run: python3 -B -m scripts.pipeline.catalog.validate_inputs
 
       - name: Download validated OCI artifact
         id: download
@@ -92,11 +149,31 @@ jobs:
           echo "::error::Nenhum artifact validado para ${FRAMEWORK} — validação falhou ou não rodou (ver job 'validate'). Publicação abortada para este framework." >&2
           exit 1
 
+      # M08/M10: o contrato funcional deste framework precisa ter passado nas
+      # duas plataformas. Evidência ausente é falha, não aprovação — e um
+      # framework sem contrato (cobertura gradual) recebe a mensagem do
+      # motivo, decidido pelo mesmo código versionado que montou a matriz.
+      - name: Download functional contract evidence
+        id: contract
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: runtime-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: runtime-gate
+
+      - name: Require the functional contract of this framework
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+          FRAMEWORKS: ${{ inputs.frameworks }}
+        run: |
+          python3 -B -m scripts.pipeline.runtime.runtime_images --gate "$FRAMEWORK" \
+            --requested "$FRAMEWORKS" --reports runtime-gate
+
       - name: Verify artifact integrity and platforms
         id: verified
         run: |
           set -eu
-          DIGEST=$(python3 -B .github/scripts/oci_artifact.py verify image.oci)
+          DIGEST=$(python3 -B -m scripts.pipeline.artifacts.oci_artifact verify image.oci)
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Verify pinned Skopeo is available
@@ -108,7 +185,7 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Record publication tool versions
-        run: python3 -B .github/scripts/tool_versions.py publication tool-versions.json
+        run: python3 -B -m scripts.pipeline.operations.tool_versions publication tool-versions.json
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
@@ -182,7 +259,7 @@ jobs:
             -v "$RUNNER_TEMP/skopeo-auth/config.json":/auth/config.json:ro "$SKOPEO_IMAGE" \
             inspect --raw --authfile /auth/config.json \
             "docker://${IMAGE_NAME}:${TIMESTAMP_TAG}" > published-index.json
-          python3 -B .github/scripts/verify_publication.py \
+          python3 -B -m scripts.pipeline.release.verify_publication \
             image.oci/validated-index.json published.digest published-index.json \
             "${IMAGE_NAME}@${ACTUAL}" > publication-evidence.json
           echo "image_ref=${IMAGE_NAME}@${ACTUAL}" >> "$GITHUB_OUTPUT"
@@ -225,5 +302,63 @@ jobs:
             publication-evidence.json
             skopeo-version.txt
             tool-versions.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  # M11/M04: uma tabela por framework com digest, arquiteturas, resultado do
+  # scan, motivo de bloqueio/skip, contrato funcional, publicação e links das
+  # evidências. Roda mesmo quando algum framework falha — é justamente aí que
+  # a tabela importa.
+  summary:
+    name: Run summary
+    needs: [validate, plan, runtime-contract, build-push]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Só as evidências: os artifacts validated-oci-* têm centenas de MB e
+      # não têm nada que a tabela use.
+      - name: Download run evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: evidence
+          pattern: '{build-scans-*,publication-*,runtime-*,promotion-*}'
+          github-token: ${{ github.token }}
+
+      - name: List artifacts of this run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          gh api "repos/${REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            > artifacts.json || echo '{}' > artifacts.json
+
+      - name: Publish per-framework result table
+        env:
+          FRAMEWORKS: ${{ inputs.frameworks }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 -B -m scripts.pipeline.operations.pipeline_summary evidence \
+            --frameworks "$FRAMEWORKS" --repository "$REPOSITORY" --run-id "$RUN_ID" \
+            --artifacts artifacts.json --annotate-contract-plan \
+            --markdown "$GITHUB_STEP_SUMMARY" --json reports/pipeline-summary.json
+
+      - name: Preserve the summary
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pipeline-summary-${{ github.run_attempt }}
+          path: reports/pipeline-summary.json
           retention-days: 30
           if-no-files-found: warn

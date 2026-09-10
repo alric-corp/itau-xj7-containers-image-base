@@ -15,7 +15,8 @@ on:
       framework:
         type: choice
         required: true
-        options: [nodejs22, nodejs24, nodejs22-dev, nodejs24-dev, python3-13, python3-14]
+        options: [nodejs22, nodejs24, nodejs22-dev, nodejs24-dev, python3-13, python3-14,
+                  go1-26, java21, dotnet10]
       artifact-run-id:
         description: 'Run containing the validated-oci artifact in this repository.'
         type: string
@@ -27,49 +28,7 @@ permissions:
 
 jobs:
   runtime:
-    name: Runtime ${{ inputs.framework }} (both architectures)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Validate requested runtime and artifact run
-        env:
-          FRAMEWORK: ${{ inputs.framework }}
-          ARTIFACT_RUN_ID: ${{ inputs.artifact-run-id || github.run_id }}
-        run: |
-          python3 -B - <<'PY'
-          import os
-          import re
-          import sys
-          sys.path.insert(0, '.github/scripts')
-          from runtime_images import runtime
-          runtime(os.environ['FRAMEWORK'])
-          if not re.fullmatch(r'[1-9][0-9]*', os.environ['ARTIFACT_RUN_ID']):
-              raise SystemExit('artifact-run-id must be a positive integer')
-          PY
-      - name: Set up emulation
-        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
-        with:
-          platforms: arm64
-      - name: Download existing candidate OCI
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: validated-oci-${{ inputs.framework }}
-          path: candidate.oci
-          run-id: ${{ inputs.artifact-run-id || github.run_id }}
-          repository: ${{ github.repository }}
-          github-token: ${{ github.token }}
-      - name: Test both candidate platforms without rebuilding
-        env:
-          FRAMEWORK: ${{ inputs.framework }}
-        run: python3 -B .github/scripts/runtime_images.py candidate.oci "$FRAMEWORK"
-      - name: Preserve runtime evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: runtime-${{ inputs.framework }}-${{ github.run_attempt }}
-          path: reports/runtime-*.json
-          retention-days: 30
-          if-no-files-found: warn
+    uses: alric-corp/itau-xj7-reusable-workflows/.github/workflows/test-runtime-images.yml@081270ccf18ee4d98da23f22f761846d29f71486 # reviewed shared workflows
+    with:
+      framework: ${{ inputs.framework }}
+      artifact-run-id: ${{ inputs.artifact-run-id }}

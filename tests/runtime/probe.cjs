@@ -1,17 +1,39 @@
 'use strict';
+// Contrato funcional M08/M10 das imagens Node: executado com o próprio
+// interpretador da imagem candidata, sem dependência externa. Mesmo
+// contrato de ambiente/saída dos projetos compilados em projects/.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const https = require('node:https');
 const { X509Certificate } = require('node:crypto');
 
+function env(name) {
+  const value = process.env[name];
+  assert.ok(value, `variável de ambiente ${name} ausente`);
+  return value;
+}
+
 assert.equal(process.getuid(), 10000);
 assert.equal(process.getgid(), 10000);
-assert.equal(process.versions.node.split('.')[0], process.env.EXPECTED_RUNTIME_VERSION);
-assert.throws(() => fs.writeFileSync('/app/runtime-test-write', 'must fail'),
+assert.equal(process.versions.node.split('.')[0], env('EXPECTED_RUNTIME_VERSION'));
+
+// /app pertence ao mesmo uid/gid do processo: a rejeição só pode vir do
+// mount somente leitura, não de permissão.
+assert.throws(() => fs.writeFileSync(env('READONLY_PATH'), 'must fail'),
   error => error.code === 'EROFS');
-fs.writeFileSync('/tmp/runtime-test-write', 'ok');
-assert.equal(fs.readFileSync('/tmp/runtime-test-write', 'utf8'), 'ok');
-const bundle = fs.readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8');
+
+const writableDirs = env('WRITABLE_DIRS').split(',');
+assert.ok(writableDirs.includes('/tmp'), 'WRITABLE_DIRS precisa incluir /tmp');
+for (const directory of writableDirs) {
+  const target = path.join(directory, 'runtime-test-write');
+  fs.writeFileSync(target, 'ok');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'ok');
+  fs.unlinkSync(target);
+}
+
+// Parsing do bundle que a imagem já traz, separado da CA de teste injetada.
+const bundle = fs.readFileSync(env('IMAGE_CA_BUNDLE'), 'utf8');
 const certificates = bundle.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
 assert.ok(certificates?.length > 0, 'empty image CA bundle');
 for (const pem of certificates) new X509Certificate(pem);
@@ -30,11 +52,14 @@ function request(url) {
   });
 }
 (async () => {
-  assert.deepEqual(await request(process.env.TLS_TRUSTED_URL),
+  assert.deepEqual(await request(env('TLS_TRUSTED_URL')),
     { status: 200, body: 'runtime-tls-ok\n' });
-  await assert.rejects(request(process.env.TLS_UNTRUSTED_URL),
+  // Erro de conexão ou timeout não aprova o negativo: o código do erro
+  // precisa ser de verificação de certificado.
+  await assert.rejects(request(env('TLS_UNTRUSTED_URL')),
     error => ['DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
       'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'].includes(error.code));
-  console.log(JSON.stringify({ version: process.versions.node, uid: process.getuid(), gid: process.getgid(), readonly: true,
-    tmpfs: true, bundle_parse: true, tls_trusted: true, tls_untrusted_rejected: true }));
+  console.log(JSON.stringify({ version: process.versions.node, uid: process.getuid(),
+    gid: process.getgid(), readonly: true, tmpfs: true, writable_dirs: true,
+    bundle_parse: true, tls_trusted: true, tls_untrusted_rejected: true }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

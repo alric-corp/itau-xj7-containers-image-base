@@ -1,0 +1,97 @@
+name: Pipeline health (M09/M11/M04)
+
+# Mede a saúde operacional do pipeline e a manutenção das ferramentas com
+# dados reais da API do GitHub, sem AWS e sem credencial de publicação:
+#
+# - idade da tag `stable` e última publicação bem-sucedida, por framework;
+# - execução esperada x real do cron e atraso de fila — inclusive o caso em
+#   que o cron não gera run nenhum, que não deixa run vermelho para olhar;
+# - disponibilidade de cada pin (Actions, imagens, versão do Trivy) na origem
+#   e idade das PRs de atualização abertas.
+#
+# Este workflow é, hoje, o próprio canal de alerta: quando um limite da
+# política (policies/operations/health.json) é rompido, o job falha e o GitHub
+# notifica quem acompanha o repositório. Destino externo ainda não definido —
+# ver docs/m11-m04-operational-health.md antes de implementar envio.
+
+on:
+  schedule:
+    # 05:40 UTC: depois do build diário (03:00 UTC) e de pelo menos duas
+    # janelas da promoção horária, para medir o ciclo completo do dia.
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pipeline-health-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  health:
+    name: Operational health and tool pins
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Observado local: 25s para checar 45 pins na origem. A margem cobre as
+    # consultas de jobs por run da métrica por framework e variância de rede.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet -r requirements-dev.txt
+
+      # Roda antes das métricas: um pin que sumiu da origem quebra o próximo
+      # build, e o resultado precisa aparecer mesmo se a métrica falhar.
+      - name: Check tool pins and update PRs
+        id: pins
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 -B -m scripts.pipeline.governance.pin_inventory check \
+            --repository "$REPOSITORY" --markdown "$GITHUB_STEP_SUMMARY" \
+            --json reports/tool-pins.json
+
+      - name: Measure operational health
+        id: metrics
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          # 90 consultas de jobs cobrem uma semana inteira de runs medidos na
+          # conta real (85 numa janela de 7 dias) em ~1m50s; abaixo disso a
+          # métrica por framework fica truncada e reporta "sem dado".
+          python3 -B -m scripts.pipeline.operations.operational_health report \
+            --repository "$REPOSITORY" --max-job-queries 90 \
+            --markdown "$GITHUB_STEP_SUMMARY" \
+            --json reports/operational-health.json
+
+      - name: Preserve health evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pipeline-health-${{ github.run_attempt }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Os dois passos acima usam continue-on-error para que a evidência suba
+      # inteira antes de o job falhar; o resultado do job continua sendo a
+      # falha, que é o alerta em si.
+      - name: Fail on breached thresholds or unavailable pins
+        env:
+          PINS: ${{ steps.pins.outcome }}
+          METRICS: ${{ steps.metrics.outcome }}
+        run: |
+          set -eu
+          test "$PINS" = success || echo "::error::pins indisponíveis ou não conferidos"
+          test "$METRICS" = success || echo "::error::limites de saúde operacional rompidos"
+          test "$PINS" = success && test "$METRICS" = success

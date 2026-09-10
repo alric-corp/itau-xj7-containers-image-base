@@ -14,8 +14,14 @@ on:
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
       - '.github/workflows/validate-base-images.yml'
+      - '.github/workflows/test-runtime-images.yml'
       - '.github/scripts/**'
+      - 'scripts/**'
+      - 'policies/**'
       - '.github/workflows/promote-stable.yml'
+      # O contrato funcional é gate de publicação (M08/M10): mudar um projeto
+      # mínimo ou um probe muda o que autoriza publicar.
+      - 'tests/runtime/**'
       - 'Makefile'
   pull_request:
     paths:
@@ -25,8 +31,14 @@ on:
       - '.github/workflows/workflow.yml'
       - '.github/workflows/build-base-images.yml'
       - '.github/workflows/validate-base-images.yml'
+      - '.github/workflows/test-runtime-images.yml'
       - '.github/scripts/**'
+      - 'scripts/**'
+      - 'policies/**'
       - '.github/workflows/promote-stable.yml'
+      # O contrato funcional é gate de publicação (M08/M10): mudar um projeto
+      # mínimo ou um probe muda o que autoriza publicar.
+      - 'tests/runtime/**'
       - 'Makefile'
   schedule:
     - cron: "0 3 * * *"   # build diário: 00:00 America/Sao_Paulo (03:00 UTC)

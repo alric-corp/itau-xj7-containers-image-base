@@ -1,5 +1,16 @@
 .DS_Store
 
+# Local Python environments and interpreter output.
+.venv/
+__pycache__/
+*.py[cod]
+
+# Pipeline outputs; reviewed evidence belongs in docs/evidence or tests/runtime.
+/reports/
+/*.oci/
+/melange-repo/
+/apko
+
 # melange local signing key + build output (regenerated on every build)
 melange/.local-keys/
 melange/packages/
@@ -11,3 +22,6 @@ melange/melange-cache/
 *.tar
 sbom-*.json
 *.spdx.json
+
+# Reviewed reusable workflows checked out for offline CI contract checks.
+.reusable-workflows/

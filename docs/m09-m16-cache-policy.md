@@ -60,8 +60,8 @@ acima.
 
 ## Validar downloads restaurados antes de executá-los
 
-[`verify_cache_integrity.py`](../.github/scripts/verify_cache_integrity.py)
-generaliza o mesmo modelo de confiança que `scripts/certificados.sh` já usa
+[`verify_cache_integrity.py`](../scripts/pipeline/governance/verify_cache_integrity.py)
+generaliza o mesmo modelo de confiança que `scripts/certificates/certificados.sh` já usa
 para o bundle de certificados corporativo: um lockfile de checksums SHA-256
 committado no Git, e o conteúdo restaurado só é confiável depois de bater
 com o lockfile — nunca só porque veio de uma fonte rápida (cache) ou local.

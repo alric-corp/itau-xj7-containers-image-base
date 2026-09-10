@@ -1,0 +1,2 @@
+# Parser used by pipeline governance checks and regression tests.
+PyYAML==6.0.3
