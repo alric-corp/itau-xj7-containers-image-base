@@ -44,9 +44,6 @@ permissions:
   contents: read
   attestations: read
 
-env:
-  TRIVY_VERSION: v0.72.0
-
 jobs:
   recover:
     name: Recover ${{ inputs.framework }} to ${{ inputs.digest }}
@@ -131,9 +128,7 @@ jobs:
             "${REGISTRY}/image-base-${FRAMEWORK}@${DIGEST}" "$GITHUB_REPOSITORY"
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: ${{ env.TRIVY_VERSION }}
+        uses: alric-corp/itau-xj7-reusable-workflows/actions/setup-trivy@eea2d2f4c4102ded74204e4131c1417f444ae3fc # governed Trivy setup
 
       # Re-scan com o banco de CVE atual — um digest antigo pode ter sido
       # aprovado antes de uma CVE ser divulgada; recuperação não é bypass

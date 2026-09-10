@@ -5,3 +5,7 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      reusable-container-pipeline:
+        patterns:
+          - "alric-corp/itau-xj7-reusable-workflows*"

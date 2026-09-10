@@ -440,3 +440,14 @@ As Actions diretas dos workflows de build/validação/promoção estão fixadas 
 O workflow de publicação configura tags imutáveis no ECR, com exceção exata para `stable`, incluindo repositórios existentes. As tags novas incluem run ID e tentativa. A compatibilidade das assinaturas/provenance com essa configuração deve ser validada no workflow autenticado antes da liberação. Reexecuções parciais do publicador reutilizam `validated-oci-<framework>` aprovado no mesmo run, independentemente de `run_attempt`. Se a validação for reexecutada, o artifact é substituído somente após o novo scan passar (`overwrite: true`); uma validação malsucedida bloqueia a publicação pelo `needs: validate`, mesmo que exista um artifact anterior. O repositório melange também permite substituição em reexecuções completas. Artifacts expirados exigem nova validação. Os relatórios de scan continuam separados por tentativa.
 
 Para executar as suítes de regressão do pipeline e dos certificados, consulte [tests/README.md](tests/README.md).
+
+## Workflows compartilhados
+
+A validação Apko/Melange e a execução dos contratos de runtime são consumidas
+por SHA de `alric-corp/itau-xj7-reusable-workflows`. A instalação do Trivy é uma
+composite action comum à validação, promoção e recuperação. Gatilhos, catálogo,
+scripts/testes de domínio e decisões de release permanecem neste repositório.
+
+Veja a [divisão de responsabilidades, contrato e adoção](docs/m09-m12-reusable-workflows.md).
+Para os checks locais, defina `REUSABLE_WORKFLOWS_PATH` apontando para um checkout
+da biblioteca no SHA dos chamadores; no CI esse checkout é resolvido automaticamente.

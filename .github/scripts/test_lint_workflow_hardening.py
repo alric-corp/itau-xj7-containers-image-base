@@ -24,6 +24,14 @@ class HardeningTests(unittest.TestCase):
         doc = with_job({'uses': './.github/workflows/validate-base-images.yml'})
         self.assertEqual(check('caller.yml', doc), [])
 
+    def test_remote_reusable_workflow_requires_full_sha(self):
+        workflow = 'owner/shared/.github/workflows/validate.yml@'
+        for ref in ('main', 'v1', 'a' * 39):
+            with self.subTest(ref=ref):
+                self.assertIn('SHA completo', ' '.join(check(
+                    'caller.yml', with_job({'uses': workflow + ref}))))
+        self.assertEqual(check('caller.yml', with_job({'uses': workflow + 'a' * 40})), [])
+
     def test_checkout_without_persist_credentials(self):
         for step in ({'uses': CHECKOUT},
                      {'uses': CHECKOUT, 'with': {'fetch-depth': 0}},

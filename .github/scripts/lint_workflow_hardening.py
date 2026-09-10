@@ -26,6 +26,9 @@ def check(name, doc):
     if 'permissions' not in doc:
         problems.append(f'{name}: workflow sem `permissions` explícito no topo')
     for job_id, job in (doc.get('jobs') or {}).items():
+        uses = job.get('uses')
+        if uses and not uses.startswith('./') and not SHA.fullmatch(uses):
+            problems.append(f'{name}: job `{job_id}` chama workflow sem SHA completo')
         steps = job.get('steps')
         if steps is None:
             continue  # chamada de workflow reutilizável: sem steps próprios

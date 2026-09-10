@@ -11,3 +11,6 @@ melange/melange-cache/
 *.tar
 sbom-*.json
 *.spdx.json
+
+# Reviewed reusable workflows checked out for offline CI contract checks.
+.reusable-workflows/

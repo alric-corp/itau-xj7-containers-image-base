@@ -14,7 +14,7 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^Makefile$/",
-        "/^\\.github/workflows/(?:validate-base-images|build-base-images|test-promotion)\\.yml$/"
+        "/^\\.github/workflows/(?:build-base-images|test-promotion)\\.yml$/"
       ],
       "matchStrings": [
         "(?<depName>cgr\\.dev/chainguard/(?:apko|melange)|quay\\.io/skopeo/stable|rhysd/actionlint)@(?<currentDigest>sha256:[a-f0-9]{64})"

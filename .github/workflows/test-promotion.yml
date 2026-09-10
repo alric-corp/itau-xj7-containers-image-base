@@ -34,6 +34,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install YAML parser
+        run: python3 -m pip install --quiet PyYAML==6.0.3
+      - name: Resolve reviewed reusable workflows
+        id: shared
+        run: python3 -B .github/scripts/workflow_dependencies.py checkout
+      - name: Checkout reusable workflows at the caller SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ steps.shared.outputs.repository }}
+          ref: ${{ steps.shared.outputs.ref }}
+          path: .reusable-workflows
+          persist-credentials: false
       - name: Test image pipeline scripts
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
       - name: Test certificate verification without AWS
@@ -46,6 +58,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - name: Install YAML parser
+        run: python3 -m pip install --quiet PyYAML==6.0.3
+      - name: Resolve reviewed reusable workflows
+        id: shared
+        run: python3 -B .github/scripts/workflow_dependencies.py checkout
+      - name: Checkout reusable workflows at the caller SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ steps.shared.outputs.repository }}
+          ref: ${{ steps.shared.outputs.ref }}
+          path: .reusable-workflows
           persist-credentials: false
       # cve-triage.lock.yml é gerado pelo `gh aw compile` a partir de
       # cve-triage.md — não faz parte deste lint (não editamos o lock à
@@ -62,7 +86,9 @@ jobs:
             .github/workflows/test-runtime-images.yml \
             .github/workflows/workflow.yml \
             .github/workflows/test-promotion.yml \
-            .github/workflows/recover-stable.yml
+            .github/workflows/recover-stable.yml \
+            .reusable-workflows/.github/workflows/validate-apko-images.yml \
+            .reusable-workflows/.github/workflows/test-runtime-images.yml
 
       # M16: regras que o actionlint não checa — checkout sem credencial Git
       # persistida, nenhuma entrada interpolada dentro de `run`, limite de
@@ -70,8 +96,8 @@ jobs:
       # completo. Vale daqui pra frente, não só na limpeza inicial.
       - name: Workflow hardening rules
         run: |
-          python3 -m pip install --quiet PyYAML==6.0.3
           python3 -B .github/scripts/lint_workflow_hardening.py
+          python3 -B .github/scripts/workflow_dependencies.py lint
 
       # M16 acceptance test: comment-only change to a protected path, to
       # prove the CODEOWNERS rule requires code-owner review post-merge.
