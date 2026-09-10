@@ -180,7 +180,9 @@ decisão.
 - **Renomeação dos repositórios (10/09, 12:24 UTC).** O executor compartilhado fixado (`081270c`) referencia internamente o nome antigo `itau-xj7-reusable-workflows`; desde a renomeação, o workflow de build falha na inicialização (`startup_failure`, runs 34475952305 e 34476466006). A correção — apontar os chamadores para o commit `0459275` da biblioteca renomeada — está implementada nesta branch. Esse commit está no PR #2 da biblioteca, ainda não na `main` dela.
 - **Digest do Skopeo removido do `quay.io`.** O build diário de 10/09 (run 34450492208) validou 14 frameworks e falhou **as 14 publicações** em `Verify pinned Skopeo is available`: `manifest unknown`. É a segunda vez (a primeira em 09/09). As tags comuns do upstream são reconstruídas diariamente. O primeiro run de saúde (34493238551) confirmou a indisponibilidade; esta branch atualiza publicador e contratos para `v1.22.2-immutable` + digest, já resolvido e executado localmente.
 
-Enquanto os dois não forem corrigidos e um build completo passar no runner
+- **Permissões dos workflows aninhados.** O primeiro run do PR de ajustes (34495120049) revelou `actions: read` solicitado por contratos/resumo, ausente no chamador. A passagem da permissão foi corrigida e ganhou lint obrigatório entre workflows.
+
+Enquanto esses bloqueios não forem corrigidos e um build completo passar no runner
 hospedado — validação → contrato → publicação → resumo —, nenhum outro item
 desta seção pode ser considerado provado na cadeia atual.
 

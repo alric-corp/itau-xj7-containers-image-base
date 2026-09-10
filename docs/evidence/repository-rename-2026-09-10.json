@@ -25,7 +25,7 @@
     ]
   },
   "validation": {
-    "unit_tests": 185,
+    "unit_tests": 188,
     "integration_tests": 20,
     "actionlint": "passed",
     "shared_workflow_contract": "passed"

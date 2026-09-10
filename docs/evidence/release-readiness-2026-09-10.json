@@ -115,7 +115,7 @@
     ]
   },
   "validation": {
-    "unit_tests": 185,
+    "unit_tests": 188,
     "integration_tests": 20,
     "lint": "passed",
     "renovate_validator": "44.74.0 --strict: passed (host Node 26.7.0, outside declared ^24.11.0 engine range)"
@@ -218,5 +218,10 @@
     "team": "github_xj7_maintainer",
     "team_permission": "push",
     "ci_run": 34494368674
+  },
+  "nested_permissions": {
+    "failed_run": 34495120049,
+    "message": "runtime-contract and summary requested actions: read but caller allowed actions: none",
+    "fix": "Grant actions: read to build and promotion callers and their workflow defaults; check local call boundaries in mandatory hardening lint."
   }
 }

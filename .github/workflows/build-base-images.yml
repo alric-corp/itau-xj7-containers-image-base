@@ -19,6 +19,7 @@ on:
 permissions:
   id-token: write           # obrigatório para o OIDC assumir a role AWS e para o cosign keyless (Sigstore)
   contents: read
+  actions: read            # leitura de artifacts pelos contratos e resumo
   attestations: write       # obrigatório para actions/attest-build-provenance
   artifact-metadata: write  # storage record da attestation (evita o warning "Failed to persist storage record")
 

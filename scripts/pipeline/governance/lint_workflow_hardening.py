@@ -51,12 +51,52 @@ def check(name, doc):
     return problems
 
 
+def local_call_permissions(documents):
+    """Nested jobs cannot request more than the calling job grants.
+
+    Workflow-level permissions are defaults, not a cap on the workflow's
+    own jobs. The cap exists at a reusable workflow call boundary.
+    """
+    levels = {'none': 0, 'read': 1, 'write': 2}
+
+    def level(permissions, scope):
+        if isinstance(permissions, str):
+            return levels[permissions.removesuffix('-all')]
+        return levels[(permissions or {}).get(scope, 'none')]
+
+    problems = []
+    for name, document in documents.items():
+        for job_id, job in (document.get('jobs') or {}).items():
+            uses = job.get('uses', '')
+            if not uses.startswith('./.github/workflows/'):
+                continue
+            target = uses.removeprefix('./.github/workflows/')
+            if target not in documents:
+                problems.append(f'{name}/{job_id}: missing local workflow {target}')
+                continue
+            granted = job.get('permissions', document.get('permissions'))
+            callee = documents[target]
+            for nested_id, nested in (callee.get('jobs') or {}).items():
+                requested = nested.get('permissions', callee.get('permissions'))
+                if not isinstance(requested, dict):
+                    problems.append(f'{target}/{nested_id}: nested permissions must be explicit mappings')
+                    continue
+                for scope in requested:
+                    if level(requested, scope) > level(granted, scope):
+                        problems.append(f'{name}/{job_id} -> {target}/{nested_id}: '
+                                        f'{scope}: {requested[scope]} exceeds caller permissions')
+    return problems
+
+
 def main(root=Path('.github/workflows')):
     problems = []
+    documents = {}
     for path in sorted(root.glob('*.yml')):
         if path.name in GENERATED:
             continue
-        problems += check(path.name, yaml.safe_load(path.read_text()))
+        documents[path.name] = yaml.safe_load(path.read_text())
+        problems += check(path.name, documents[path.name])
+    problems += local_call_permissions(documents)
     for problem in problems:
         print(f'::error::{problem}', file=sys.stderr)
     return 1 if problems else 0

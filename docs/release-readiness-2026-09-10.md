@@ -7,6 +7,12 @@ preservados em um commit separado dos ajustes desta entrega.
 
 ## Correções
 
+O primeiro run do PR (#48, `34495120049`) encontrou mais um bloqueio de
+inicialização: os jobs de contratos/resumo pediam `actions: read`, mas o
+chamador concedia `actions: none`. Os chamadores de build e promoção agora
+propagam leitura de Actions; o lint obrigatório compara permissões nas
+fronteiras entre workflows locais e rejeita esse caso antes do runner.
+
 - Chamadores adotam `0459275b4a2ffbe6e8961041e7b93b41e88ba215`, que resolve a
   action interna pelo nome novo. A [biblioteca #2](https://github.com/alric-corp/alric-containers-reusable-workflows/pull/2)
   ainda precisa de revisão independente. A trust policy foi relida e contém
