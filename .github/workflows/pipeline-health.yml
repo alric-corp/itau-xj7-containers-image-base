@@ -66,11 +66,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          # 90 consultas de jobs cobrem uma semana inteira de runs medidos na
-          # conta real (85 numa janela de 7 dias) em ~1m50s; abaixo disso a
-          # métrica por framework fica truncada e reporta "sem dado".
+          # Uma semana nominal já contém 175 builds/promoções agendados.
+          # A margem cobre dispatches e pushes; PRs não consomem este limite.
           python3 -B -m scripts.pipeline.operations.operational_health report \
-            --repository "$REPOSITORY" --max-job-queries 90 \
+            --repository "$REPOSITORY" --max-job-queries 300 \
             --markdown "$GITHUB_STEP_SUMMARY" \
             --json reports/operational-health.json
 

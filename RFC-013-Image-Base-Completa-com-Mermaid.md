@@ -120,7 +120,7 @@ patamar distroless e cobre parte dos controles de hardened:
 | --- | --- |
 | Minimalismo | Base sem shell nem gerenciador de pacotes, comprovado por execução nas variantes finais de Node, Python, Go, Java e .NET. Go 1.26, Java 21 e .NET 10 têm runtime separado do toolchain; `go1-25`, `java25` e `dotnet8` ainda carregam o toolchain/SDK completo. |
 | Imutabilidade | Tags de build imutáveis no ECR (exceção só para `stable`), rejeição de sobrescrita comprovada nos 15 repositórios. Raiz somente leitura testada em contrato; continua dependendo da configuração do consumidor em runtime. |
-| Manutenção | Rebuild diário e promoção por soak em execução; ferramentas por SHA/digest com lint de cobertura. A entrega do agendador do GitHub é de melhor esforço (medido: 10% das ocorrências horárias viraram run), a automação de atualização (Renovate) não está ativa e o check diário de pins ainda não rodou no runner hospedado. |
+| Manutenção | Rebuild diário e promoção por soak em execução; ferramentas por SHA/digest com lint de cobertura. A entrega do agendador do GitHub é de melhor esforço (medido: 10% das ocorrências horárias viraram run), a automação de atualização (Renovate) não está ativa e a primeira execução de saúde no runner detectou o Skopeo indisponível e lacuna de agendamento. |
 | Verificabilidade | SBOM por build, assinatura cosign keyless e provenance SLSA no ECR, verificados na promoção e de forma independente fora do pipeline. Identidade do assinador vinculada ao ID numérico do repositório, não só ao nome. |
 
 ## Catálogo
@@ -156,15 +156,15 @@ o estado.
 | M06 | Imutabilidade no ECR | Concluído | 15 repositórios `IMMUTABLE_WITH_EXCLUSION`; sobrescrita rejeitada de verdade | — |
 | M07 | Runtime separado do toolchain | Parcial | Go 1.26, Java 21 e .NET 10 separados, tamanho medido, apps mínimas executadas | `go1-25`, `java25`, `dotnet8` |
 | M08 | Testes funcionais das imagens | Parcial | 9 frameworks com contrato; gate de publicação por framework; execução local sobre artifacts reais de CI | Cadeia com o gate ligado ainda sem run no runner hospedado; 3 frameworks sem contrato |
-| M09 | Ferramentas fixadas e mantidas | Parcial | SHA/digest em tudo; lint de cobertura e consistência; versões efetivas por etapa; check de disponibilidade | Renovate inativo; check diário nunca rodou; o digest do Skopeo sumiu do quay.io duas vezes |
-| M10 | Certificados com integridade verificável | Aberto | Parsing do bundle e TLS positivo/negativo nos 5 runtimes; script corporativo com manifesto SHA-256 | O bundle que entra na imagem ainda é o Mozilla baixado sem checksum; fonte corporativa não integrada ao build |
-| M11 | Documentação, SLA e visibilidade | Parcial | CVEs sem correção visíveis; tabela por framework em cada run; saúde diária com política versionada | SLA não formalizado; canal externo de alerta não definido; workflow de saúde nunca rodou |
+| M09 | Ferramentas fixadas e mantidas | Parcial | SHA/digest em tudo; lint de cobertura e consistência; versões efetivas por etapa; check de disponibilidade | Renovate inativo; Skopeo corrigido com tag `-immutable` + digest nesta branch; integrar e validar publicação |
+| M10 | Certificados com integridade verificável | Parcial | Parsing do bundle e TLS positivo/negativo nos 5 runtimes; script corporativo com manifesto SHA-256 | Mozilla agora fixado por data e SHA-256 nesta branch; fonte corporativa não integrada ao build |
+| M11 | Documentação, SLA e visibilidade | Parcial | CVEs sem correção visíveis; tabela por framework em cada run; saúde diária com política versionada | SLA não formalizado; canal externo de alerta não definido; saúde já executada, com alertas reais ainda abertos |
 | M12 | Checks obrigatórios | Concluído | `test` + `lint-workflows` exigidos, `enforce_admins`, merge com check falho rejeitado | — |
 | M13 | Publicação independente por framework | Concluído | `dotnet8` falha sem derrubar os demais; retry sem rebuild | — |
 | M14 | Timeouts e concorrência | Concluído | Limites por duração real; cancelamento por PR; timeout real observado | — |
 | M15 | Recuperação de `stable` | Concluído | Runbook executado de ponta a ponta; quarentena versionada | — |
 | M16 | Endurecimento e revisão efetiva | Concluído | Lint obrigatório; code owner comprovado pós-merge; regressão de `enforce_admins` achada e corrigida | — |
-| M09/M12 | Executores compartilhados | Parcial | Validação, contrato e Trivy consumidos por SHA de `alric-containers-reusable-workflows` | `main` da biblioteca sem proteção; pin atual referencia o nome antigo (ver abaixo) |
+| M09/M12 | Executores compartilhados | Parcial | Validação, contrato e Trivy consumidos por SHA de `alric-containers-reusable-workflows` | `main` da biblioteca protegida; pin corrigido nesta branch, pendente de revisão do PR #2 |
 | — | Scanner corporativo (Veracode SCA) | Aberto | Seis critérios de aceite registrados | Decisão de AppSec; cobertura de Wolfi não comprovada |
 
 ## Prontidão para produção
@@ -177,8 +177,8 @@ decisão.
 
 ### 1. A `main` não publica neste momento
 
-- **Renomeação dos repositórios (10/09, 12:24 UTC).** O executor compartilhado fixado (`081270c`) referencia internamente o nome antigo `itau-xj7-reusable-workflows`; desde a renomeação, o workflow de build falha na inicialização (`startup_failure`, runs 34475952305 e 34476466006). A correção — apontar os chamadores para o commit `0459275` da biblioteca renomeada — está em andamento na árvore de trabalho. Esse commit está no PR #2 da biblioteca, ainda não na `main` dela.
-- **Digest do Skopeo removido do `quay.io`.** O build diário de 10/09 (run 34450492208) validou 14 frameworks e falhou **as 14 publicações** em `Verify pinned Skopeo is available`: `manifest unknown`. É a segunda vez (a primeira em 09/09). `quay.io/skopeo/stable` é uma tag rolling que não retém digests antigos; o `pin_inventory.py check` detecta isso, mas roda no workflow de saúde, que ainda não teve o primeiro run. O executor de contratos usa o mesmo digest.
+- **Renomeação dos repositórios (10/09, 12:24 UTC).** O executor compartilhado fixado (`081270c`) referencia internamente o nome antigo `itau-xj7-reusable-workflows`; desde a renomeação, o workflow de build falha na inicialização (`startup_failure`, runs 34475952305 e 34476466006). A correção — apontar os chamadores para o commit `0459275` da biblioteca renomeada — está implementada nesta branch. Esse commit está no PR #2 da biblioteca, ainda não na `main` dela.
+- **Digest do Skopeo removido do `quay.io`.** O build diário de 10/09 (run 34450492208) validou 14 frameworks e falhou **as 14 publicações** em `Verify pinned Skopeo is available`: `manifest unknown`. É a segunda vez (a primeira em 09/09). As tags comuns do upstream são reconstruídas diariamente. O primeiro run de saúde (34493238551) confirmou a indisponibilidade; esta branch atualiza publicador e contratos para `v1.22.2-immutable` + digest, já resolvido e executado localmente.
 
 Enquanto os dois não forem corrigidos e um build completo passar no runner
 hospedado — validação → contrato → publicação → resumo —, nenhum outro item
@@ -201,25 +201,26 @@ outra identidade invalida a verificação da promoção.
 | Decisão | Estado | De quem |
 | --- | --- | --- |
 | Scanner de container corporativo | O gate roda Trivy; a esteira corporativa levantada usa Veracode SCA agent-based, cuja documentação não lista Wolfi. Seis critérios de aceite abertos (cobertura, entrega por arquitetura, política válida, re-scan na promoção, credenciais, normalização de evidências). | AppSec + Containers Products |
-| Fonte corporativa de certificados (M10) | `scripts/certificates/certificados.sh` baixa e verifica os bundles CloudSec/Itaú por manifesto SHA-256, mas não participa da composição da imagem; `melange/bundle-pem-test.yaml` ainda baixa o bundle Mozilla de `curl.se` sem checksum. | Containers Products + Segurança |
+| Fonte corporativa de certificados (M10) | `scripts/certificates/certificados.sh` baixa e verifica os bundles CloudSec/Itaú por manifesto SHA-256, mas não participa da composição da imagem; `melange/bundle-pem-test.yaml` fixa o bundle Mozilla por data e verifica SHA-256 nesta branch. | Containers Products + Segurança |
 | Catálogo | `dotnet8` sem correção disponível no Wolfi: retirar do catálogo ou aceitar exceção formal (hoje: exceção com revisão em 09/10/2026). `go1-25` e `java25` sem variante `-dev` e sem contrato funcional. | Containers Products |
 | Canal e dono de alerta, SLA publicável | Política e limites versionados; `external_destination` deliberadamente `null`. O SLA precisa ser escrito sobre a cadência observada do cron, não a nominal. | Containers Products |
 
 ### 4. Manutenção ainda não ligada
 
-Renovate não ativado (nenhum PR real de atualização de digest); PR do
-Dependabot aberto sem revisão; `pipeline-health.yml` sem nenhuma execução;
-`main` de `alric-containers-reusable-workflows` sem branch protection nem
-revisão obrigatória — o consumidor fixa por SHA, mas o SHA em adoção não
-passou por revisão na biblioteca.
+Renovate ainda depende de instalação pelo administrador. O Dependabot #47 foi
+revisado: altera runtime de código gerado sem recompilar, portanto não deve ser
+integrado isoladamente. A saúde já rodou e alertou; a `main` da biblioteca agora
+exige checks e revisão independente de CODEOWNERS, inclusive de administradores.
+O SHA em adoção ainda aguarda essa revisão no PR #2. Ver
+[ajustes finais e aceites](docs/release-readiness-2026-09-10.md).
 
 ### 5. Cobertura e evidência parciais
 
 Contrato funcional compilado provado localmente sobre artifacts reais de CI,
 mas a cadeia `validação → contrato → publicação` ainda não rodou no runner
 hospedado; `go1-25`, `java25` e `dotnet8` sem contrato; primeira promoção
-pós-renomeação sem run; lifecycle policy do ECR (7 dias na proposta) não
-configurada.
+pós-renomeação sem run. A lifecycle policy foi aplicada e relida nos 15 ECRs:
+imagens sem tag após 30 dias; todas as releases com tag preservadas.
 
 ### O que já está no nível esperado
 
@@ -415,7 +416,7 @@ com scan e testes. Exemplos para Node.js, .NET e Java no [README](README.md#como
 - Publicação das imagens no ECR corporativo; liberação de pull para as organizações do Itaú.
 - Uma tag `stable` para consumo e tags imutáveis para rastreabilidade.
 - Retenção de evidências de CI por finalidade (1, 3 e 30 dias), versionada em `policies/operations/health.json` e conferida por lint contra os workflows. `retention-days` não é backup: reexecução gera digests novos.
-- Policy de lifecycle do ECR (7 dias na proposta original) **ainda não configurada**; a recuperação de `stable` depende de o digest anterior continuar no registry, então o prazo precisa ser definido junto com o período de recuperação.
+- Lifecycle ECR aplicada no sandbox: expira somente imagens sem tag após 30 dias; preview dos 15 repositórios sem alvos atuais. Todas as releases com tag permanecem preservadas para recuperação. Reduzir a retenção de releases publicadas exige definir a janela de recuperação.
 
 ## Repositórios
 

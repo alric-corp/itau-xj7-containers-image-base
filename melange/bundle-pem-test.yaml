@@ -9,7 +9,7 @@
 # distroless/image-base.yaml.
 package:
   name: bundle-pem-test
-  version: 0.1.0
+  version: 0.1.1
   epoch: 0
   description: "Mozilla CA certificate bundle (bundle.pem), sourced from the curl.se PEM export of Mozilla's trusted root store"
   copyright:
@@ -31,7 +31,11 @@ pipeline:
     runs: |
       set -eu
       install -d "${{targets.destdir}}"/etc/ssl/certs
-      curl -fsSL https://curl.se/ca/cacert.pem -o "${{targets.destdir}}"/etc/ssl/certs/bundle.pem
+      # Date and checksum are reviewed together; never trust a checksum
+      # downloaded alongside the payload during the build.
+      curl -fsSL https://curl.se/ca/cacert-2026-08-13.pem -o "${{targets.destdir}}"/etc/ssl/certs/bundle.pem
+      printf '%s  %s\n' f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9 \
+        "${{targets.destdir}}"/etc/ssl/certs/bundle.pem | sha256sum -c -
       test -s "${{targets.destdir}}"/etc/ssl/certs/bundle.pem
       grep -q "BEGIN CERTIFICATE" "${{targets.destdir}}"/etc/ssl/certs/bundle.pem
       chmod 0644 "${{targets.destdir}}"/etc/ssl/certs/bundle.pem
