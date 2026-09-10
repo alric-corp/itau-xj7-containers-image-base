@@ -84,22 +84,50 @@ python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 
 ## Adoção e evidências
 
-PR da biblioteca: [reusable-workflows #1](https://github.com/alric-corp/itau-xj7-reusable-workflows/pull/1).
+PRs: [reusable-workflows #1](https://github.com/alric-corp/itau-xj7-reusable-workflows/pull/1) e [image-base #45](https://github.com/alric-corp/itau-xj7-containers-image-base/pull/45).
 Os commits fixados já foram enviados; a `main` do consumidor só deve adotar o
 pacote após a revisão da biblioteca. Preserve os commits referenciados: se usar
 squash, fixe o SHA final da biblioteca no consumidor e repita os checks antes
 do merge. Isso também é necessário em atualizações futuras.
 
 A consulta inicial encontrou a biblioteca pública e `main` sem proteção.
+A conferência adicional encontrou `sha_pinning_required: false`, token padrão
+com leitura e sem permissão para aprovar PRs, `@vigcf` com acesso de administrador
+e nenhum time associado ao repositório. O time do CODEOWNERS precisa receber
+escrita para atuar como dono; `@vigcf` já tem acesso suficiente.
 `CODEOWNERS` foi preparado, mas aprovação de code owner, required checks,
 descarte de aprovações antigas, `enforce_admins` e acesso de escrita dos donos
 precisam ser ativados/conferidos antes da adoção em produção. Os arquivos deste
 trabalho não alteram as configurações remotas.
 
-A validação local e os runs autenticados serão registrados na RFC com seus
-limites. Um check aprovado não comprova publicação ECR, promoção, recuperação
+A validação local e os runs autenticados estão registrados abaixo e na RFC
+com seus limites. Um check aprovado não comprova publicação ECR, promoção, recuperação
 ou execução do cron; os aceites remotos dos demais itens continuam separados.
 
 Referências: [reuso e permissões](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows),
 [contexto do chamador](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations),
 [OIDC e workflow chamado](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-with-reusable-workflows).
+
+## Evidências da segregação — 10/09/2026
+
+- Biblioteca: 11 testes, hardening, actionlint e instalação real do Trivy
+  [aprovados](https://github.com/alric-corp/itau-xj7-reusable-workflows/actions/runs/34431800269).
+- Consumidor: `test` e `lint-workflows`
+  [aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432303109).
+- Validação de PR pela biblioteca: [14 de 15 frameworks aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432303814).
+  `dotnet8` foi bloqueado nas duas arquiteturas pelo scan: `CVE-2026-47304`
+  (CRITICAL), `CVE-2026-47302`, `CVE-2026-50525` e `CVE-2026-50648` (HIGH),
+  com versão de correção `8.0.129-r1` reportada pelo Trivy. Nenhum artifact
+  `validated-oci-dotnet8` foi liberado; publicação e promoção ficaram `skipped`.
+- Runtime Python 3.13: [amd64 nativo e arm64 emulado aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432393980),
+  consumindo o artifact do run de validação acima. UID/GID, filesystem somente
+  leitura, tmpfs e TLS positivo/negativo passaram sobre o mesmo índice OCI.
+- Local: 123 testes de pipeline + 13 de certificados na branch isolada;
+  168 testes e a política de retenção aprovados na árvore com os trabalhos
+  preexistentes de runtime/saúde. O runtime compilado dessa árvore não foi
+  exercido no dispatch hospedado desta segregação.
+
+[Registro com commits, digests e relatórios](evidence/reusable-workflows-2026-09-10.json).
+Os runs correspondem ao commit funcional `974384c`; a atualização posterior
+registra somente documentação/evidências. Publicação ECR, promoção, recuperação
+e merge não foram executados nesta entrega.
