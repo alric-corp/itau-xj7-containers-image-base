@@ -15,7 +15,7 @@ import sys
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-REPOSITORY = 'alric-corp/itau-xj7-reusable-workflows'
+REPOSITORY = 'alric-corp/alric-containers-reusable-workflows'
 REFERENCE = re.compile(
     re.escape(REPOSITORY) + r'/(\.github/workflows/[\w-]+\.yml)@([0-9a-f]{40})')
 GENERATED = {'cve-triage.lock.yml'}

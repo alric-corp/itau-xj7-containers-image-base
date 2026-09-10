@@ -31,7 +31,7 @@ usado pelos chamadores. Prepare um checkout separado do seu trabalho local:
 
 ```sh
 python3 -B -m scripts.pipeline.governance.workflow_dependencies checkout
-git clone --no-checkout https://github.com/alric-corp/itau-xj7-reusable-workflows.git .reusable-workflows
+git clone --no-checkout https://github.com/alric-corp/alric-containers-reusable-workflows.git .reusable-workflows
 SHARED_REF="$(python3 -B -c 'from scripts.pipeline.governance.workflow_dependencies import dependencies; print(dependencies()[0]["ref"])')"
 git -C .reusable-workflows fetch origin "$SHARED_REF"
 git -C .reusable-workflows checkout --detach "$SHARED_REF"

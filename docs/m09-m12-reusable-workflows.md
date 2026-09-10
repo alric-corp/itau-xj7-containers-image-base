@@ -1,7 +1,7 @@
 # Segregação dos workflows — M09/M12 e identidade M03/M05/M16
 
 O `image-base` já reutilizava jobs localmente. A segregação move execução
-compartilhável para `alric-corp/itau-xj7-reusable-workflows` e mantém as decisões
+compartilhável para `alric-corp/alric-containers-reusable-workflows` e mantém as decisões
 de release no produto. O primeiro pacote tem contrato Apko/OCI explícito;
 não promete suportar qualquer pipeline Docker sem adaptação.
 
@@ -29,11 +29,11 @@ em jobs distintos, preservando o retry da publicação sem rebuild.
 O checkout dentro de um workflow reutilizável lê o **consumidor**. Assim,
 `frameworks/`, `melange/`, `scripts/pipeline/` e `tests/runtime/` continuam
 resolvendo no commit do `image-base`. Isso é intencional e documentado no
-[contrato do pacote](https://github.com/alric-corp/itau-xj7-reusable-workflows/blob/8f82ea345b38142d43fb8f8358ae76d2d4ea97ce/docs/apko-contract.md).
+[contrato do pacote](https://github.com/alric-corp/alric-containers-reusable-workflows/blob/8f82ea345b38142d43fb8f8358ae76d2d4ea97ce/docs/apko-contract.md).
 Outro produto precisa implementar as mesmas interfaces antes de adotar o pacote.
 
 Os reusable workflows usam o commit publicado
-`081270ccf18ee4d98da23f22f761846d29f71486`; a action Trivy e todas as demais
+`0459275b4a2ffbe6e8961041e7b93b41e88ba215`; a action Trivy e todas as demais
 Actions externas também usam SHA completo. Validação recebe
 somente `contents: read`; runtime recebe também `actions: read` para baixar
 artifacts do próprio produto. Não há `secrets: inherit`, comandos como input
@@ -41,7 +41,8 @@ nem novos jobs com OIDC. As permissões existentes de publicação continuam
 declaradas no consumidor.
 
 O job assinador permanece em `.github/workflows/build-base-images.yml`;
-`verify_promotion.py` não foi alterado. Não há nova identidade de assinador a
+`verify_promotion.py` preserva a identidade exata por workflow; a compatibilidade
+com o nome anterior exige IDs assinados, conforme a [migração de nomes](repository-rename.md). Não há nova identidade de assinador a
 autorizar nem wildcard para aceitar candidatos históricos. Uma futura extração
 do publicador deve satisfazer o aceite de identidade já registrado na RFC antes
 de ser ativada. A migração atual também não altera Environments ou trust policy IAM.
@@ -89,7 +90,7 @@ locais do repositório compartilhado como substituto do release publicado.
 
 ## Adoção e evidências
 
-PRs: [reusable-workflows #1](https://github.com/alric-corp/itau-xj7-reusable-workflows/pull/1) e [image-base #45](https://github.com/alric-corp/itau-xj7-containers-image-base/pull/45).
+PRs: [reusable-workflows #1](https://github.com/alric-corp/alric-containers-reusable-workflows/pull/1) e [image-base #45](https://github.com/alric-corp/alric-containers-image-base/pull/45).
 A migração de pastas usa o commit já publicado. A proposta local de consumir
 `@v1` foi substituída por SHA completo: a tag não existia na consulta de
 10/09/2026, e o pin evita mudança implícita do executor entre execuções.
@@ -117,15 +118,15 @@ Referências: [reuso e permissões](https://docs.github.com/en/actions/how-tos/r
 ## Evidências da segregação — 10/09/2026
 
 - Biblioteca: 11 testes, hardening, actionlint e instalação real do Trivy
-  [aprovados](https://github.com/alric-corp/itau-xj7-reusable-workflows/actions/runs/34431800269).
+  [aprovados](https://github.com/alric-corp/alric-containers-reusable-workflows/actions/runs/34431800269).
 - Consumidor: `test` e `lint-workflows`
-  [aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432303109).
-- Validação de PR pela biblioteca: [14 de 15 frameworks aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432303814).
+  [aprovados](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34432303109).
+- Validação de PR pela biblioteca: [14 de 15 frameworks aprovados](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34432303814).
   `dotnet8` foi bloqueado nas duas arquiteturas pelo scan: `CVE-2026-47304`
   (CRITICAL), `CVE-2026-47302`, `CVE-2026-50525` e `CVE-2026-50648` (HIGH),
   com versão de correção `8.0.129-r1` reportada pelo Trivy. Nenhum artifact
   `validated-oci-dotnet8` foi liberado; publicação e promoção ficaram `skipped`.
-- Runtime Python 3.13: [amd64 nativo e arm64 emulado aprovados](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34432393980),
+- Runtime Python 3.13: [amd64 nativo e arm64 emulado aprovados](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34432393980),
   consumindo o artifact do run de validação acima. UID/GID, filesystem somente
   leitura, tmpfs e TLS positivo/negativo passaram sobre o mesmo índice OCI.
 - Local: 123 testes de pipeline + 13 de certificados na branch isolada;

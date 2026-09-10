@@ -123,7 +123,7 @@ jobs:
 
       - name: Install Trivy
         if: steps.candidate.outputs.skip == 'false'
-        uses: alric-corp/itau-xj7-reusable-workflows/actions/setup-trivy@eea2d2f4c4102ded74204e4131c1417f444ae3fc # governed Trivy setup
+        uses: alric-corp/alric-containers-reusable-workflows/actions/setup-trivy@eea2d2f4c4102ded74204e4131c1417f444ae3fc # governed Trivy setup
 
       - name: Record promotion tool versions
         if: steps.candidate.outputs.skip == 'false'

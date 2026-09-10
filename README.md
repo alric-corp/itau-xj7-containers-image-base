@@ -353,7 +353,7 @@ python3 -B -m unittest discover -s tests/unit -t . -p 'test_*.py' -v
 | Etapa | O que é medido | Valor real observado | Fonte |
 | --- | --- | --- | --- |
 | Execução do job de promoção | Tempo do job `Promote <framework>` do dispatch até concluir (seleção + verificação + re-scan + retag) | 11-40s | Runs reais desta sessão, ver histórico de entregas M04/M14 |
-| Atraso do cron horário | Diferença entre o slot nominal (`17 * * * *`) e a criação do run | ≥24m43s (limite inferior — a API não expõe o instante nominal de enfileiramento) | [run 34390576742](https://github.com/alric-corp/itau-xj7-containers-image-base/actions/runs/34390576742), Décima sexta entrega |
+| Atraso do cron horário | Diferença entre o slot nominal (`17 * * * *`) e a criação do run | ≥24m43s (limite inferior — a API não expõe o instante nominal de enfileiramento) | [run 34390576742](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34390576742), Décima sexta entrega |
 | Correção disponível no Wolfi → build que a incorpora → `stable` atualizado | Ainda **não medido de ponta a ponta** — exige correlacionar o timestamp de publicação do pacote corrigido no Wolfi com o build seguinte, e esse rastreamento ainda não existe no pipeline | — | Item aberto (ver M11 — restante) |
 
 A espera nominal após o soak (6h) até a próxima janela de promoção horária é inferior a uma hora, mas uma amostra única de atraso do scheduler não prova regularidade contínua — só observação repetida ao longo do tempo formaliza isso como garantia. O build publicado pode ser consumido antes da promoção, assumindo explicitamente que ainda não passou pelo gate de `stable`.
@@ -395,7 +395,7 @@ cosign verify \
 gh attestation verify oci://<registro-ecr>/image-base-java21:stable --owner <sua-org>
 ```
 
-Assinatura e provenance foram verificadas em leitura contra um digest já publicado pela main, e um artifact sem assinatura foi rejeitado pelo novo gate. A execução completa desse gate no workflow autenticado de promoção ainda está pendente; ver evidências e digests no checklist da RFC-013.
+Assinatura e provenance foram verificadas em leitura contra um digest já publicado pela main, e um artifact sem assinatura foi rejeitado pelo novo gate. O gate roda no workflow autenticado de promoção a cada ciclo; evidências e digests em [docs/rfc-013-historico-de-entregas.md](docs/rfc-013-historico-de-entregas.md).
 
 ## Configuração dos workflows reusáveis
 
@@ -451,7 +451,7 @@ make clean                                                # remove chave e pacot
 
 Manter uma imagem base atualizada e escaneada pra 5 linguagens diferentes costuma acabar em um de dois lugares: um Dockerfile artesanal por time/projeto que ninguém revisita depois que funciona uma vez, ou a decisão de aceitar uma imagem genérica de distro completa (com o pacote de ferramentas — e CVEs — que vem junto) só porque é o caminho de menor resistência.
 
-O `image-base` centraliza as 12 combinações linguagem+versão+variante em `frameworks/*.yaml`, com validação das duas arquiteturas antes do job de publicação e nova avaliação por digest antes de promover para `stable`. A identidade do artefato é preservada na cópia OCI; o checklist da RFC-013 distingue implementação, testes reais e controles ainda pendentes.
+O `image-base` centraliza as 15 combinações linguagem+versão+variante em `frameworks/*.yaml`, com validação das duas arquiteturas antes do job de publicação e nova avaliação por digest antes de promover para `stable`. A identidade do artefato é preservada na cópia OCI; a [RFC-013](RFC-013-Image-Base-Completa-com-Mermaid.md) registra o estado de cada controle e o que falta para produção.
 
 Isso não substitui a imagem final da sua aplicação — é o ponto de partida (`FROM <registro-ecr>/image-base-<framework>:stable`) pra não ter que decidir, de novo, quais pacotes tirar de uma imagem Ubuntu/Alpine pra chegar a um resultado parecido.
 
@@ -470,12 +470,13 @@ Para executar as suítes de regressão do pipeline e dos certificados, consulte 
 ## Workflows compartilhados
 
 A validação Apko/Melange e a execução dos contratos de runtime são consumidas
-via o commit publicado `081270ccf18ee4d98da23f22f761846d29f71486` de
-`alric-corp/itau-xj7-reusable-workflows`. A instalação do Trivy é uma
+via o commit publicado `0459275b4a2ffbe6e8961041e7b93b41e88ba215` de
+`alric-corp/alric-containers-reusable-workflows`. A instalação do Trivy é uma
 composite action comum à validação, promoção e recuperação. Gatilhos, catálogo,
 scripts/testes de domínio e decisões de release permanecem neste repositório.
 
 Veja a [divisão de responsabilidades, contrato e adoção](docs/m09-m12-reusable-workflows.md).
 Para os checks locais, defina `REUSABLE_WORKFLOWS_PATH` apontando para um checkout
-da biblioteca no release `v1`; no CI o SHA efetivamente resolvido é registrado e
-validado automaticamente.
+da biblioteca no SHA fixado pelos chamadores; no CI esse commit é conferido
+automaticamente. A [migração dos nomes e da confiança AWS](docs/repository-rename.md)
+descreve a compatibilidade das assinaturas históricas.

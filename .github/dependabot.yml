@@ -13,4 +13,4 @@ updates:
     groups:
       reusable-container-pipeline:
         patterns:
-          - "alric-corp/itau-xj7-reusable-workflows*"
+          - "alric-corp/alric-containers-reusable-workflows*"
