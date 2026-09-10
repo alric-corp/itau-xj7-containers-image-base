@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import re
+import socket
 import ssl
 import subprocess
 import tarfile
@@ -16,6 +17,7 @@ import threading
 import uuid
 
 from oci_artifact import blob, load_index, verify
+from readiness import wait_until_ready
 
 ROOT = Path(__file__).resolve().parents[2]
 SKOPEO = 'quay.io/skopeo/stable@sha256:b9ca6a549aa71990d50ab390a8bddf606a6689379026aa24e7f4f70b5a43fbcd'
@@ -80,6 +82,15 @@ def tls_server(directory, name):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
+        # M08/M10/M14: bounded readiness check from the harness (this
+        # process), not the container -- replaces the implicit assumption
+        # that a bound socket is already reachable across the Docker
+        # bridge by the time the container starts. A fast server pays no
+        # wait; one that never comes up fails within the limit instead of
+        # the container hanging on connection refused for its own timeout.
+        wait_until_ready(
+            lambda: socket.create_connection(('127.0.0.1', server.server_port), timeout=1).close(),
+            interval=0.05, timeout=5.0, attempts=100)
         yield f'https://host.docker.internal:{server.server_port}/', cert
     finally:
         server.shutdown()
