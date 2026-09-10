@@ -72,7 +72,12 @@
   },
   "mozilla_bundle": {
     "url": "https://curl.se/ca/cacert-2026-08-13.pem",
-    "sha256": "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9"
+    "sha256": "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9",
+    "integrity_test": {
+      "official_payload": "accepted by recipe shell",
+      "tampered_payload": "rejected by recipe checksum",
+      "melange_ci": "passed in run 34495477165"
+    }
   },
   "renovate": {
     "organization_app_installations": 0,
@@ -80,7 +85,8 @@
   },
   "dependabot_47": {
     "head": "0cdf7ed463a94664f49dba0b814f1d40d161190b",
-    "finding": "Six setup pins changed in generated lock YAML while metadata, manifest and actions-lock remain on compiler/runtime v0.81.6; update through gh-aw compilation, not standalone action bump."
+    "finding": "Six setup pins changed in generated lock YAML while metadata, manifest and actions-lock remain on compiler/runtime v0.81.6; update through gh-aw compilation, not standalone action bump.",
+    "state": "closed"
   },
   "pins_after_fix": {
     "checked": 43,
@@ -118,7 +124,8 @@
     "unit_tests": 188,
     "integration_tests": 20,
     "lint": "passed",
-    "renovate_validator": "44.74.0 --strict: passed (host Node 26.7.0, outside declared ^24.11.0 engine range)"
+    "renovate_validator": "44.74.0 --strict: passed (host Node 26.7.0, outside declared ^24.11.0 engine range)",
+    "compiled_contracts": "6 passed reports across Go 1.26, Java 21 and .NET 10; source validation run 34495477165"
   },
   "health_after_fix": {
     "generated_at": "2026-09-10T15:17:45.481772+00:00",
@@ -223,5 +230,15 @@
     "failed_run": 34495120049,
     "message": "runtime-contract and summary requested actions: read but caller allowed actions: none",
     "fix": "Grant actions: read to build and promotion callers and their workflow defaults; check local call boundaries in mandatory hardening lint."
+  },
+  "ci": {
+    "fast_checks": 34495475873,
+    "validation": 34495477165,
+    "shared_governance": 34494368674,
+    "runtime_contracts": {
+      "go1-26": 34495657343,
+      "java21": 34495661621,
+      "dotnet10": 34495665150
+    }
   }
 }

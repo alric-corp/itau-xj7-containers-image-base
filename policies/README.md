@@ -6,6 +6,7 @@ em `scripts/pipeline/` aplicam as regras; os workflows controlam a execução.
 | Arquivo | Consumidor | Responsabilidade |
 | --- | --- | --- |
 | `operations/health.json` | `operations/operational_health.py` | Donos, alertas, exceções, cron e retenção das evidências |
+| `operations/ecr-lifecycle.json` | ECR, após preview revisado | Expira somente imagens sem tag após 30 dias; preserva releases com tag |
 | `release/promotion-quarantine.json` | `release/find_promotion_candidate.py` | Digests retirados de stable que não podem ser promovidos novamente |
 | `release/signing-identities.json` | `release/verify_promotion.py` | Nome atual, nomes históricos e IDs imutáveis assinados do repositório e da organização |
 | `aws/github-actions-image-base-trust.json` | IAM, role `github-actions-image-base` | Trust policy OIDC aplicada, restrita ao subject exato da main |

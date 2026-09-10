@@ -98,14 +98,13 @@ Os arquivos locais ainda não publicados da biblioteca não são necessários
 para o consumidor reorganizado.
 
 A consulta inicial encontrou a biblioteca pública e `main` sem proteção.
-A conferência adicional encontrou `sha_pinning_required: false`, token padrão
-com leitura e sem permissão para aprovar PRs, `@vigcf` com acesso de administrador
-e nenhum time associado ao repositório. O time do CODEOWNERS precisa receber
-escrita para atuar como dono; `@vigcf` já tem acesso suficiente.
-`CODEOWNERS` foi preparado, mas aprovação de code owner, required checks,
-descarte de aprovações antigas, `enforce_admins` e acesso de escrita dos donos
-precisam ser ativados/conferidos antes da adoção em produção. Os arquivos deste
-trabalho não alteram as configurações remotas.
+Nos ajustes finais de 10/09/2026, a proteção foi aplicada e relida: três checks
+obrigatórios, aprovação independente de CODEOWNERS, descarte de aprovações
+antigas, aprovação do último push e `enforce_admins`. O time recebeu escrita
+e `sha_pinning_required` foi ativado. A configuração reproduzível está no
+[PR #3](https://github.com/alric-corp/alric-containers-reusable-workflows/pull/3).
+O pin corrigido do [PR #2](https://github.com/alric-corp/alric-containers-reusable-workflows/pull/2)
+continua sujeito à revisão independente. [Evidência remota](evidence/release-readiness-2026-09-10.json).
 
 A validação local e os runs autenticados estão registrados abaixo e na RFC
 com seus limites. Um check aprovado não comprova publicação ECR, promoção, recuperação

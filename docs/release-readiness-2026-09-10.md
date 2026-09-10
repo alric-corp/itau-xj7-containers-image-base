@@ -51,6 +51,32 @@ verdes não executam esse workflow nem comprovam a compatibilidade do runtime.
 é atualizar a versão de `gh-aw` e recompilar o Markdown, mantendo runtime e
 código gerado coordenados. O ignore `github/gh-aw-actions/*` em Dependabot
 evita novas propostas desse tipo; os outros Actions continuam cobertos.
+O PR #47 foi fechado após essa revisão.
+
+## Validação no runner
+
+O [run 34495477165](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34495477165)
+passou da inicialização, compilou o bundle e aprovou 14/15 frameworks.
+`dotnet8` continuou bloqueado com 28 achados por arquitetura, versão instalada
+`8.0.127-r0` e correção indicada `8.0.129-r1`; nenhum artifact aprovado foi
+emitido para ele. Os checks obrigatórios passaram, com 188 testes unitários,
+20 de integração e os lints.
+
+Contratos compilados foram executados por dispatch, somente leitura, usando
+os pares runtime/dev desse run. Todos passaram em amd64 nativo e arm64 emulado:
+
+| Contrato | Run | Resultado |
+| --- | --- | --- |
+| Go 1.26 | [34495657343](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34495657343) | 2 plataformas aprovadas |
+| Java 21 | [34495661621](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34495661621) | 2 plataformas aprovadas |
+| .NET 10 | [34495665150](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34495665150) | 2 plataformas aprovadas |
+
+[Os seis relatórios](evidence/runtime-runner-2026-09-10.json) preservam os
+digests do runtime e do dev, compilação, versão, UID/GID 10000, raiz somente
+leitura, tmpfs, parsing do bundle e TLS confiável/não confiável. O código
+testado é `c700aad`; a atualização posterior desta branch apenas registra
+documentação/evidências. Estes dispatches não publicaram imagens nem moveram
+`stable`; a cadeia inteira na `main` continua sendo aceite pendente.
 
 ## Manutenção e retenção
 

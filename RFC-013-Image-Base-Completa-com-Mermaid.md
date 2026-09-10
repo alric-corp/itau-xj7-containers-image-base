@@ -155,7 +155,7 @@ o estado.
 | M05 | PR sem credenciais, trust policy | Concluído | PR interno rejeitado, fork real sem OIDC, policy por IDs numéricos | Recriar e reprovar no ambiente de produção |
 | M06 | Imutabilidade no ECR | Concluído | 15 repositórios `IMMUTABLE_WITH_EXCLUSION`; sobrescrita rejeitada de verdade | — |
 | M07 | Runtime separado do toolchain | Parcial | Go 1.26, Java 21 e .NET 10 separados, tamanho medido, apps mínimas executadas | `go1-25`, `java25`, `dotnet8` |
-| M08 | Testes funcionais das imagens | Parcial | 9 frameworks com contrato; gate de publicação por framework; execução local sobre artifacts reais de CI | Cadeia com o gate ligado ainda sem run no runner hospedado; 3 frameworks sem contrato |
+| M08 | Testes funcionais das imagens | Parcial | 9 frameworks com contrato; gate por framework; Go/Java/.NET aprovados no runner em amd64/arm64 sobre artifacts do PR #48 | Cadeia com o gate ligado ainda sem run no runner hospedado; 3 frameworks sem contrato |
 | M09 | Ferramentas fixadas e mantidas | Parcial | SHA/digest em tudo; lint de cobertura e consistência; versões efetivas por etapa; check de disponibilidade | Renovate inativo; Skopeo corrigido com tag `-immutable` + digest nesta branch; integrar e validar publicação |
 | M10 | Certificados com integridade verificável | Parcial | Parsing do bundle e TLS positivo/negativo nos 5 runtimes; script corporativo com manifesto SHA-256 | Mozilla agora fixado por data e SHA-256 nesta branch; fonte corporativa não integrada ao build |
 | M11 | Documentação, SLA e visibilidade | Parcial | CVEs sem correção visíveis; tabela por framework em cada run; saúde diária com política versionada | SLA não formalizado; canal externo de alerta não definido; saúde já executada, com alertas reais ainda abertos |
@@ -218,8 +218,9 @@ O SHA em adoção ainda aguarda essa revisão no PR #2. Ver
 
 ### 5. Cobertura e evidência parciais
 
-Contrato funcional compilado provado localmente sobre artifacts reais de CI,
-mas a cadeia `validação → contrato → publicação` ainda não rodou no runner
+Contratos compilados de Go 1.26, Java 21 e .NET 10 aprovados no runner em
+amd64/arm64 sobre artifacts do PR #48 ([seis relatórios](docs/evidence/runtime-runner-2026-09-10.json)),
+mas a cadeia `validação → contrato → publicação` no mesmo run ainda não rodou no runner
 hospedado; `go1-25`, `java25` e `dotnet8` sem contrato; primeira promoção
 pós-renomeação sem run. A lifecycle policy foi aplicada e relida nos 15 ECRs:
 imagens sem tag após 30 dias; todas as releases com tag preservadas.
