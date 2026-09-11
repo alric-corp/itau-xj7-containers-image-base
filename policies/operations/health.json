@@ -33,7 +33,7 @@
     }
   },
   "retention_days": {
-    "melange-repo": 1,
+    "melange-repo": 30,
     "validated-oci-": 3,
     "build-scans-": 30,
     "publication-": 30,
@@ -44,7 +44,9 @@
     "runtime-": 30,
     "pipeline-summary-": 30,
     "pipeline-health-": 30,
-    "$comment": "Finalidade de cada prazo: repositório melange (1d) é insumo intermediário, reconstruído em minutos; OCI aprovado (3d) é a janela de retry da publicação sem revalidar; evidências de scan, publicação, contrato funcional, promoção, recuperação e saúde (30d) cobrem auditoria e o runbook de recuperação do M15. retention-days é prazo de expiração de artifact, não backup: uma reexecução completa produz digests novos e não recupera o artifact vencido (achado do R03). A recuperação de stable por digest depende do ECR, não destes artifacts."
+    "$comment": "Melange, locks, SBOMs e evidências: 30d para auditoria e replay (dependências Wolfi ainda precisam estar disponíveis). OCI validado: 3d para retry sem rebuild. SBOMs assinados no ECR acompanham o digest; artifacts de CI não são backup do registry.",
+    "sbom-": 30,
+    "image-trust-": 30
   },
   "exceptions": {
     "dotnet8": {

@@ -8,6 +8,7 @@
 | Entender contratos com o executor compartilhado | [Workflows reutilizáveis](m09-m12-reusable-workflows.md) |
 | Entender a renomeação e a confiança AWS | [Migração de nomes](repository-rename.md) |
 | Conferir os ajustes finais e os aceites restantes | [Liberação em 10/09/2026](release-readiness-2026-09-10.md) |
+| Entender CAs, timezone, camadas, replay e SBOMs | [Composição](image-composition.md) |
 | Consultar políticas executáveis | [Políticas](../policies/README.md) |
 | Operar alertas, cron e retenção | [Saúde operacional](m11-m04-operational-health.md) |
 | Recuperar stable | [Runbook de recuperação](../README.md#recuperação-de-stable-runbook-m15) |

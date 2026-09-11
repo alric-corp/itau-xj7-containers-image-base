@@ -6,27 +6,8 @@
 # build ...` normal (shell-form) num Dockerfile falha com "/bin/sh: no
 # such file or directory" — só a forma exec (`RUN ["go", "build", ...]`)
 # funcionaria sem isso, o que não é o padrão esperado de um Dockerfile.
-include: distroless/image-base.yaml
+include: distroless/runtime.yaml
 contents:
   packages:
     - go-1.26
     - busybox
-
-work-dir: /app
-
-accounts:
-  groups:
-    - groupname: appuser
-      gid: 10000
-  users:
-    - username: appuser
-      uid: 10000
-      gid: 10000
-  run-as: appuser
-
-paths:
-  - path: /app
-    type: directory
-    uid: 10000
-    gid: 10000
-    permissions: 0o755

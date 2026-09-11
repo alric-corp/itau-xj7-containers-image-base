@@ -110,6 +110,7 @@ internal static class Program
     // continua sendo conferido.
     private static HttpClient Client(string caFile)
     {
+        if (caFile == null) return new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         X509Certificate2Collection testCa = LoadPem(caFile);
         if (testCa.Count == 0)
         {
@@ -168,6 +169,18 @@ internal static class Program
         return false;
     }
 
+    private static bool TimezoneWorks()
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+        foreach (int year in new[] {2026, 2018})
+        {
+            var date = new DateTime(year, 1, 15, 12, 0, 0, DateTimeKind.Utc);
+            if (zone.GetUtcOffset(date) != TimeSpan.FromHours(year == 2026 ? -3 : -2))
+                Fail("incorrect Sao Paulo offset");
+        }
+        return true;
+    }
+
     private static async Task Main()
     {
         string expected = Env("EXPECTED_RUNTIME_VERSION");
@@ -186,7 +199,7 @@ internal static class Program
         {
             Fail("WRITABLE_DIRS precisa incluir /tmp");
         }
-        HttpClient client = Client(Env("TLS_CA_FILE"));
+        HttpClient client = Client(Environment.GetEnvironmentVariable("TLS_CA_FILE"));
         var result = new Dictionary<string, object>
         {
             ["version"] = Environment.Version.ToString(),
@@ -195,6 +208,7 @@ internal static class Program
             ["readonly"] = ReadonlyRoot(Env("READONLY_PATH")),
             ["tmpfs"] = true,
             ["writable_dirs"] = Writable(directories),
+            ["timezone"] = TimezoneWorks(),
             ["bundle_parse"] = BundleParses(Env("IMAGE_CA_BUNDLE")),
             ["tls_trusted"] = await TrustedAsync(client, Env("TLS_TRUSTED_URL")).ConfigureAwait(false),
             ["tls_untrusted_rejected"] =

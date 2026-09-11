@@ -9,7 +9,31 @@ contents:
   # ca-certificates-bundle, então não falta nada essencial sem wolfi-base.
   packages:
     - ca-certificates-bundle
-    - bundle-pem-test
+    - image-base-ca-certificates
+    - tzdata
+
+# Apko integra as âncoras do pacote ao PEM e, quando presente, ao JKS.
+# Nenhum hook, shell ou update-ca-certificates precisa entrar no runtime.
+certificates:
+  providers:
+    - custom-ca-certificates
+
+layering:
+  strategy: origin
+  budget: 10
+
+work-dir: /app
+
+paths:
+  - path: /app
+    type: directory
+    uid: 10000
+    gid: 10000
+    permissions: 0o755
+
+environment:
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+  NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
 
 archs:
   - amd64

@@ -144,7 +144,7 @@ def validate_result(output):
     if result.get('uid') != 10000 or result.get('gid') != 10000:
         raise ValueError('runtime did not confirm uid/gid 10000')
     for key in ('readonly', 'tmpfs', 'writable_dirs', 'bundle_parse',
-                'tls_trusted', 'tls_untrusted_rejected'):
+                'timezone', 'tls_trusted', 'tls_untrusted_rejected'):
         if result.get(key) is not True:
             raise ValueError(f'runtime did not confirm {key}')
     return result
@@ -161,9 +161,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def tls_server(directory, name):
+def tls_server(directory, name, identity=None):
     cert, key = directory / f'{name}.pem', directory / f'{name}.key'
-    command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+    if identity:
+        cert, key = map(Path, identity)
+    else:
+        command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
             '-keyout', str(key), '-out', str(cert), '-subj', '/CN=host.docker.internal',
             '-addext', 'subjectAltName=DNS:host.docker.internal',
             '-addext', 'basicConstraints=critical,CA:TRUE')
@@ -242,12 +245,12 @@ def loaded_platform(layout, arch, directory):
 
 def contract_environment(framework, urls, ca):
     trusted_url, untrusted_url = urls
-    return ['-v', f'{ca}:/test-ca.pem:ro',
-            # Node/Python/Go recebem a CA pelo mecanismo de ambiente do
-            # próprio runtime; Java e .NET não têm equivalente e recebem o
-            # caminho do PEM para configurar a confiança explicitamente.
-            '-e', 'SSL_CERT_FILE=/test-ca.pem', '-e', 'NODE_EXTRA_CA_CERTS=/test-ca.pem',
-            '-e', 'TLS_CA_FILE=/test-ca.pem', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+    # ca=None exercises the trust installed by Melange + Apko, with no mount,
+    # SSL_CERT_FILE override, Node override or custom Java/.NET trust store.
+    injected = [] if ca is None else [
+        '-v', f'{ca}:/test-ca.pem:ro', '-e', 'SSL_CERT_FILE=/test-ca.pem',
+        '-e', 'NODE_EXTRA_CA_CERTS=/test-ca.pem', '-e', 'TLS_CA_FILE=/test-ca.pem']
+    return injected + ['-e', 'PYTHONDONTWRITEBYTECODE=1',
             '-e', f'IMAGE_CA_BUNDLE={IMAGE_CA_BUNDLE}',
             '-e', f'READONLY_PATH={READONLY_PATH}',
             '-e', f'WRITABLE_DIRS={",".join(WRITABLE_DIRS)}',
@@ -350,7 +353,7 @@ def verified_layout(layout):
     return layout, verified
 
 
-def run(layout, framework, reports, dev_layout=None, build_timeout=600):
+def run(layout, framework, reports, dev_layout=None, build_timeout=600, baked_ca=None):
     kind = supported(framework)
     if kind == 'compiled':
         _, dev_framework, _ = project(framework)
@@ -376,7 +379,9 @@ def run(layout, framework, reports, dev_layout=None, build_timeout=600):
         daemon_arch = command('docker', 'info', '--format', '{{.Architecture}}')
         with tempfile.TemporaryDirectory(prefix='runtime-contract-') as temporary:
             directory = Path(temporary)
-            with tls_server(directory, 'trusted') as (trusted_url, ca), \
+            trusted = (tls_server(directory, 'trusted', (str(baked_ca) + '.pem', str(baked_ca) + '.key'))
+                       if baked_ca else tls_server(directory, 'trusted'))
+            with trusted as (trusted_url, ca), \
                     tls_server(directory, 'untrusted') as (untrusted_url, _):
                 for arch, report in evidence.items():
                     try:
@@ -391,7 +396,8 @@ def run(layout, framework, reports, dev_layout=None, build_timeout=600):
                                 dev_manifest_digest=dev_verified['platforms'][f'linux/{arch}'])
                         report['checks'] = run_platform(
                             (layout, dev_layout), framework, arch, directory,
-                            (trusted_url, untrusted_url), ca, build_timeout)
+                            (trusted_url, untrusted_url), None if baked_ca else ca, build_timeout)
+                        report['trust_mode'] = 'image' if baked_ca else 'injected-runtime-ca'
                         report['status'] = 'passed'
                     except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError) as error:
                         report['error'] = str(error)
@@ -457,6 +463,7 @@ def main():
     parser.add_argument('framework', nargs='?')
     parser.add_argument('--dev-layout', help='layout OCI da variante -dev (contratos compilados)')
     parser.add_argument('--reports', default='reports')
+    parser.add_argument('--baked-ca', help='isolated fixture TLS identity prefix (.pem/.key)')
     # 600s por plataforma: o build multi-stage mais lento observado foi 19,3s
     # (amd64 emulado por Rosetta). Margem grande para o QEMU do runner, mas
     # ainda dentro do timeout do job — o erro do script é mais legível que um
@@ -495,7 +502,7 @@ def main():
     if not args.layout or not args.framework:
         parser.error('layout e framework são obrigatórios')
     dev_layout = args.dev_layout if args.dev_layout and Path(args.dev_layout).is_dir() else None
-    return run(args.layout, args.framework, args.reports, dev_layout, args.build_timeout)
+    return run(args.layout, args.framework, args.reports, dev_layout, args.build_timeout, args.baked_ca)
 
 
 if __name__ == '__main__':

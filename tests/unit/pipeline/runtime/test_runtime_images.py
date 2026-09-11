@@ -24,7 +24,7 @@ class RuntimeContractTests(unittest.TestCase):
 
     def test_missing_checks_and_root_are_rejected(self):
         result = dict(uid=10000, gid=10000, readonly=True, tmpfs=True, writable_dirs=True,
-                      bundle_parse=True, tls_trusted=True, tls_untrusted_rejected=True)
+                      timezone=True, bundle_parse=True, tls_trusted=True, tls_untrusted_rejected=True)
         self.assertEqual(runtime.validate_result(json.dumps(result)), result)
         for key in result:
             changed = dict(result)

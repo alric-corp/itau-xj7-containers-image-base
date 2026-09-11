@@ -2,23 +2,4 @@
 # toolchain para rodar, só do CA bundle já incluído em distroless/image-base.yaml.
 # Compile em go1-25-dev.yaml (estágio de build) e copie o binário para esta
 # imagem no estágio final: `COPY --from=build /app/servidor /app/servidor`.
-include: distroless/image-base.yaml
-
-work-dir: /app
-
-accounts:
-  groups:
-    - groupname: appuser
-      gid: 10000
-  users:
-    - username: appuser
-      uid: 10000
-      gid: 10000
-  run-as: appuser
-
-paths:
-  - path: /app
-    type: directory
-    uid: 10000
-    gid: 10000
-    permissions: 0o755
+include: distroless/runtime.yaml

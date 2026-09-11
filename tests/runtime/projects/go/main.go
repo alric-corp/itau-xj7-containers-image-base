@@ -21,6 +21,7 @@ import (
 )
 
 type result struct {
+	Timezone bool `json:"timezone"`
 	Version              string `json:"version"`
 	UID                  int    `json:"uid"`
 	GID                  int    `json:"gid"`
@@ -146,6 +147,16 @@ func untrustedRejected(url string) bool {
 	return false
 }
 
+func timezoneWorks() bool {
+    zone, err := time.LoadLocation("America/Sao_Paulo")
+    if err != nil { fail("timezone missing: %v", err) }
+    for year, expected := range map[int]int{2026: -3*3600, 2018: -2*3600} {
+        _, offset := time.Date(year, 1, 15, 12, 0, 0, 0, zone).Zone()
+        if offset != expected { fail("incorrect Sao Paulo offset for %d: %d", year, offset) }
+    }
+    return true
+}
+
 func main() {
 	expected := env("EXPECTED_RUNTIME_VERSION")
 	if !strings.HasPrefix(runtime.Version(), "go"+expected) {
@@ -166,6 +177,7 @@ func main() {
 		fail("WRITABLE_DIRS precisa incluir /tmp")
 	}
 	output, err := json.Marshal(result{
+		Timezone:             timezoneWorks(),
 		Version:              strings.TrimPrefix(runtime.Version(), "go"),
 		UID:                  uid,
 		GID:                  gid,

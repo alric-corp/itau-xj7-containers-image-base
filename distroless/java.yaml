@@ -1,0 +1,10 @@
+include: distroless/image-base.yaml
+accounts:
+  groups:
+    - groupname: spring
+      gid: 10000
+  users:
+    - username: spring
+      uid: 10000
+      gid: 10000
+  run-as: "10000"

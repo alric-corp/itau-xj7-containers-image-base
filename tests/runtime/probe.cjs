@@ -38,6 +38,12 @@ const certificates = bundle.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END C
 assert.ok(certificates?.length > 0, 'empty image CA bundle');
 for (const pem of certificates) new X509Certificate(pem);
 
+const zonedHour = value => new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23'
+}).format(new Date(value));
+assert.equal(zonedHour('2026-01-15T12:00:00Z'), '09');
+assert.equal(zonedHour('2018-01-15T12:00:00Z'), '10');
+
 function request(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { timeout: 10000 }, response => {
@@ -61,5 +67,5 @@ function request(url) {
       'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'].includes(error.code));
   console.log(JSON.stringify({ version: process.versions.node, uid: process.getuid(),
     gid: process.getgid(), readonly: true, tmpfs: true, writable_dirs: true,
-    bundle_parse: true, tls_trusted: true, tls_untrusted_rejected: true }));
+    timezone: true, bundle_parse: true, tls_trusted: true, tls_untrusted_rejected: true }));
 })().catch(error => { console.error(error); process.exitCode = 1; });

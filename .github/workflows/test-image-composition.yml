@@ -1,0 +1,72 @@
+name: Image trust contract (no AWS)
+on:
+  workflow_call:
+    outputs:
+      result:
+        description: "Result of the default trust gate across all runtime families."
+        value: ${{ jobs.image-trust-gate.outputs.result }}
+permissions:
+  contents: read
+env:
+  APKO_IMAGE: cgr.dev/chainguard/apko@sha256:37e3aa165456e6c55fcded1e11af7ae9b010af914f0b25015c9a4247ec139c67
+  MELANGE_IMAGE: cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b
+jobs:
+  trust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [python3-13, nodejs22, go1-26, java21, dotnet10]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+        with:
+          platforms: arm64
+      - name: Exercise default trust with a build-time CA on both architectures
+        env:
+          FRAMEWORK: ${{ matrix.framework }}
+        run: python3 -B tests/runtime/certificate_contract.py "$FRAMEWORK"
+      - name: Preserve trust contract evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: image-trust-${{ matrix.framework }}-${{ github.run_attempt }}
+          path: reports/certificate-contract/
+          retention-days: 30
+          if-no-files-found: error
+
+  image-trust-gate:
+    outputs:
+      result: ${{ steps.require.outputs.result }}
+    needs: trust
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all default trust contracts
+        id: require
+        env:
+          TRUST_RESULT: ${{ needs.trust.result }}
+          REVISION: ${{ github.sha }}
+          ATTEMPT: ${{ github.run_attempt }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -eu
+          test "$TRUST_RESULT" = success
+          echo "result=success" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('image-trust-gate.json').write_text(json.dumps({
+              'revision': os.environ['REVISION'], 'attempt': os.environ['ATTEMPT'],
+              'run_id': os.environ['RUN_ID'], 'passed': True}))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: image-trust-gate-${{ github.run_attempt }}
+          path: image-trust-gate.json
+          retention-days: 30
+          if-no-files-found: error

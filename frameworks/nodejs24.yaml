@@ -1,26 +1,7 @@
 # Variante "run": só o runtime do Node, sem npm/busybox/shell.
 # Para instalar dependências use nodejs24-dev.yaml no estágio de build da
 # sua aplicação e copie node_modules/código para esta imagem no estágio final.
-include: distroless/image-base.yaml
+include: distroless/runtime.yaml
 contents:
   packages:
     - nodejs-24
-
-work-dir: /app
-
-accounts:
-  groups:
-    - groupname: appuser
-      gid: 10000
-  users:
-    - username: appuser
-      uid: 10000
-      gid: 10000
-  run-as: appuser
-
-paths:
-  - path: /app
-    type: directory
-    uid: 10000
-    gid: 10000
-    permissions: 0o755
