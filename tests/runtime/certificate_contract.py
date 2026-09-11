@@ -29,6 +29,10 @@ def check(framework, reports):
             shutil.copytree(ROOT / directory, workspace / directory)
         melange = workspace / 'melange'
         melange.mkdir()
+        # Melange needs root inside its build sandbox. Own the output directories
+        # on the host so cleanup can unlink the root-created APK/index files.
+        for arch in ('x86_64', 'aarch64'):
+            (melange / 'packages' / arch).mkdir(parents=True)
         shutil.copy(ROOT / 'melange/image-base-ca-certificates.yaml', melange)
         identity = workspace / 'trusted'
         command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',

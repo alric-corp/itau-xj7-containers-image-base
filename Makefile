@@ -84,6 +84,7 @@ keygen: $(MELANGE_KEY)
 # Âncoras revisadas; o perfil público não duplica o bundle fornecido pelo Wolfi.
 $(MELANGE_REPO): $(MELANGE_KEY) melange/image-base-ca-certificates.yaml $(wildcard melange/certificates/* melange/certificates/anchors/*)
 	$(PYTHON) -B scripts/certificates/prepare_anchors.py verify
+	@mkdir -p $(MELANGE_REPO)/x86_64 $(MELANGE_REPO)/aarch64
 	@set -eu; for BUILD_ARCH in x86_64 aarch64; do \
 		docker run --privileged --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b \
 			build image-base-ca-certificates.yaml --arch "$$BUILD_ARCH" --signing-key .local-keys/melange.rsa --build-date "$$(git show -s --format=%cI HEAD)"; \

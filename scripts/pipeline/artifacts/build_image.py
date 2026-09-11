@@ -40,9 +40,14 @@ def build(framework, output, engine='native', repository='melange-repo/packages'
     lock = output / 'apko.lock.json'
     apko = ['./apko']
     if engine == 'docker':
-        apko = ['docker', 'run', '--rm', '-v', f'{Path.cwd()}:/work', '-w', '/work',
+        # Native CI also runs Apko unprivileged. Keep bind-mount outputs owned
+        # by the caller on Linux (Docker Desktop hides this ownership mismatch).
+        apko = ['docker', 'run', '--rm', '--user', f'{os.getuid()}:{os.getgid()}',
+                '-v', f'{Path.cwd()}:/work', '-w', '/work',
                 os.environ['APKO_IMAGE']]
     common = ['--arch', arch, '--repository-append', repository, '--keyring-append', keyring]
+    if engine == 'docker':
+        common += ['--cache-dir', '/tmp/apko-cache']
     if lockfile:
         lock.write_bytes(Path(lockfile).read_bytes())
     else:

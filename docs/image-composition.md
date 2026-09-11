@@ -108,6 +108,28 @@ o repositório Melange também passa a 30 dias. O OCI para retry continua com
 ferramentas, incluindo o Melange que compilou o pacote. O banner ASCII
 deixa de aparecer como se fosse a versão efetiva do Apko.
 
+## Evidência local de 11/09/2026
+
+[Resultados completos](evidence/image-composition-2026-09-11.json): 195 testes
+unitários, 24 de integração e 14 do executor compartilhado; lints aprovados.
+Os cinco runtimes passaram nos testes de CA instalada/TLS/timezone nas duas
+arquiteturas. Python reproduziu os mesmos manifests e os três SPDX byte a byte.
+
+Oito imagens Java/Node, 16 manifests (amd64 + arm64), mesmos pacotes e data:
+
+| Estratégia | Camadas por manifest | MiB únicos comprimidos | Redução frente à camada única |
+| --- | ---: | ---: | ---: |
+| Sem layering | 1 | 1.168,8 | — |
+| Origin, budget 1 | 2 | 1.169,7 | −0,1% |
+| Origin, budget 5 | 6 | 855,8 | 26,8% |
+| Origin, budget 10 | 11 | 825,3 | 29,4% |
+
+O orçamento 10 economiza mais 30,5 MiB que o orçamento 5 nesse conjunto;
+é o valor adotado. A medição soma as duas arquiteturas, não é o download
+de um único nó. Os testes locais antecedem o commit da mudança; o JSON
+registra essa origem. O aceite de publicação das attestations no ECR
+continua exigindo a execução autenticada depois da revisão/merge.
+
 ## Limites preservados
 
 UID/GID numérico 10000, `/app` com dono 10000, `/tmp`, banco APK para o scanner,
