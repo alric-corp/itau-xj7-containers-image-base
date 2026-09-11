@@ -18,11 +18,23 @@
         "/^scripts/pipeline/runtime/runtime_images\\.py$/"
       ],
       "matchStrings": [
-        "(?<depName>cgr\\.dev/chainguard/(?:apko|melange)|quay\\.io/skopeo/stable|rhysd/actionlint)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "(?<depName>cgr\\.dev/chainguard/(?:apko|melange)|rhysd/actionlint)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker",
       "currentValueTemplate": "latest"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/build-base-images\\.yml$/",
+        "/^scripts/pipeline/runtime/runtime_images\\.py$/"
+      ],
+      "matchStrings": [
+        "(?<depName>quay\\.io/skopeo/stable):(?<currentValue>v\\d+\\.\\d+\\.\\d+-immutable)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-immutable$"
     }
   ]
 }

@@ -33,7 +33,7 @@ class HardeningTests(unittest.TestCase):
         self.assertEqual(check('caller.yml', with_job({'uses': workflow + 'a' * 40})), [])
 
     def test_corporate_reusable_workflow_also_requires_sha(self):
-        uses = ('alric-corp/itau-xj7-reusable-workflows/.github/workflows/'
+        uses = ('alric-corp/alric-containers-reusable-workflows/.github/workflows/'
                 'validate-apko-images.yml@v1')
         self.assertIn('SHA completo', ' '.join(check('caller.yml', with_job({'uses': uses}))))
 

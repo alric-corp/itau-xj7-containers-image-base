@@ -34,7 +34,7 @@ from scripts.pipeline.artifacts.oci_artifact import blob, load_index, verify
 from scripts.pipeline.runtime.readiness import wait_until_ready
 
 ROOT = Path(__file__).resolve().parents[3]
-SKOPEO = 'quay.io/skopeo/stable@sha256:b9ca6a549aa71990d50ab390a8bddf606a6689379026aa24e7f4f70b5a43fbcd'
+SKOPEO = 'quay.io/skopeo/stable:v1.22.2-immutable@sha256:4a16d57b37617a04b3d643079a477a2848efe892dffcdf0ce56df4262b65f810'
 
 # Contrato de ambiente compartilhado pelos quatro runtimes.
 IMAGE_CA_BUNDLE = '/etc/ssl/certs/ca-certificates.crt'

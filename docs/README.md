@@ -6,13 +6,16 @@
 | Localizar responsabilidades e dependências | [Arquitetura](repository-architecture.md) |
 | Preparar ambiente e validar uma mudança | [Contribuição](../CONTRIBUTING.md) |
 | Entender contratos com o executor compartilhado | [Workflows reutilizáveis](m09-m12-reusable-workflows.md) |
+| Entender a renomeação e a confiança AWS | [Migração de nomes](repository-rename.md) |
+| Conferir os ajustes finais e os aceites restantes | [Liberação em 10/09/2026](release-readiness-2026-09-10.md) |
 | Consultar políticas executáveis | [Políticas](../policies/README.md) |
 | Operar alertas, cron e retenção | [Saúde operacional](m11-m04-operational-health.md) |
 | Recuperar stable | [Runbook de recuperação](../README.md#recuperação-de-stable-runbook-m15) |
 | Entender gates e hardening | [Inventário de gates](m12-gate-inventory.md), [revisão M09–M16](m09-m16-review.md) |
 | Consultar a decisão sobre cache | [Política de cache](m09-m16-cache-policy.md) |
 | Executar contratos de imagens reais | [Runtime](../tests/runtime/README.md) |
-| Consultar proposta, aceites e pendências | [RFC-013](../RFC-013-Image-Base-Completa-com-Mermaid.md) |
+| Consultar proposta, estado e prontidão para produção | [RFC-013](../RFC-013-Image-Base-Completa-com-Mermaid.md) |
+| Consultar aceites, entregas e achados de cada etapa | [Histórico da RFC-013](rfc-013-historico-de-entregas.md) |
 | Auditar resultados históricos | [Evidências](evidence/), [fechamento do checklist](old-checklist-closure.md) |
 
 Documentos históricos e evidências conservam seus nomes para preservar links

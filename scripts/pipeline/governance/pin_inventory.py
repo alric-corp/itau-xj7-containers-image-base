@@ -32,7 +32,8 @@ ROOT = Path(__file__).resolve().parents[3]
 GENERATED = {'cve-triage.lock.yml'}
 
 ACTION = re.compile(r'uses:\s*["\']?(?P<name>[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+)@(?P<ref>[^\s"\'#]+)')
-IMAGE = re.compile(r'(?P<name>[a-z0-9.-]+(?::\d+)?/[a-z0-9._/-]+)@(?P<digest>sha256:[0-9a-f]{64})')
+IMAGE = re.compile(r'(?P<name>[a-z0-9.-]+(?::\d+)?/[a-z0-9._/-]+)'
+                   r'(?::(?P<tag>[A-Za-z0-9_.-]+))?@(?P<digest>sha256:[0-9a-f]{64})')
 TOOL_VERSION = re.compile(r'(?P<name>[A-Z0-9_]+_VERSION):\s*["\']?(?P<version>v?\d+[\w.+-]*)')
 SHA = re.compile(r'[0-9a-f]{40}')
 
@@ -67,7 +68,8 @@ def pins(paths):
                           'pinned': bool(SHA.fullmatch(ref))})
         for match in IMAGE.finditer(text):
             found.append({'kind': 'image', 'file': relative, 'name': match.group('name'),
-                          'current': match.group('digest'), 'pinned': True})
+                          'current': match.group('digest'), 'tag': match.group('tag'),
+                          'pinned': True})
         for match in TOOL_VERSION.finditer(text):
             found.append({'kind': 'tool', 'file': relative, 'name': match.group('name'),
                           'current': match.group('version'), 'pinned': True})
@@ -199,7 +201,8 @@ def availability(entries, run=subprocess.run):
             record['available'] = bool(commit and commit.get('sha') == entry['current'])
             record['origin'] = f'https://github.com/{owner_repo}'
         elif entry['kind'] == 'image':
-            record['available'] = image_available(f"{entry['name']}@{entry['current']}", run)
+            tag = ':' + entry['tag'] if entry.get('tag') else ''
+            record['available'] = image_available(f"{entry['name']}{tag}@{entry['current']}", run)
             record['origin'] = entry['name']
         else:
             source = entry.get('source')

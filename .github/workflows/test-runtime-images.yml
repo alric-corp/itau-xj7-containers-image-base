@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   runtime:
-    uses: alric-corp/itau-xj7-reusable-workflows/.github/workflows/test-runtime-images.yml@081270ccf18ee4d98da23f22f761846d29f71486 # reviewed shared workflows
+    uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/test-runtime-images.yml@0459275b4a2ffbe6e8961041e7b93b41e88ba215 # reviewed shared workflows
     with:
       framework: ${{ inputs.framework }}
       artifact-run-id: ${{ inputs.artifact-run-id }}

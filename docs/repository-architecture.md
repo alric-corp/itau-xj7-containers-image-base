@@ -60,7 +60,7 @@ mudança explícita nesta documentação e no teste de arquitetura.
 
 ## Fronteira entre produto e workflows compartilhados
 
-O repositório `itau-xj7-reusable-workflows` fornece os executores genéricos
+O repositório `alric-containers-reusable-workflows` fornece os executores genéricos
 Melange/Apko/scan e runtime. O checkout desses executores é o commit do
 **consumidor**, de onde vêm os manifests, scripts e testes.
 
@@ -69,7 +69,7 @@ assinador e recuperação. O executor compartilhado não recebe comandos livres,
 regras de negócio ou credenciais AWS como parte de seu contrato.
 
 Os dois chamadores usam o commit publicado
-`081270ccf18ee4d98da23f22f761846d29f71486`. Actions externas e reusable workflows
+`0459275b4a2ffbe6e8961041e7b93b41e88ba215`. Actions externas e reusable workflows
 exigem SHA completo; imagens de ferramentas usam digest. O CI faz um segundo
 checkout exatamente desse commit e verifica conteúdo, inputs, hardening,
 retenção e alinhamento do Trivy. Dependabot agrupa as atualizações dos

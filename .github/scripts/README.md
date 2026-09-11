@@ -1,7 +1,7 @@
 # Adaptadores de compatibilidade
 
 O executor reutilizável fixado no commit
-`081270ccf18ee4d98da23f22f761846d29f71486` ainda usa estes caminhos do consumidor:
+`0459275b4a2ffbe6e8961041e7b93b41e88ba215` ainda usa estes caminhos do consumidor:
 
 | Adaptador | Implementação canônica |
 | --- | --- |

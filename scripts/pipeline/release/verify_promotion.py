@@ -8,6 +8,22 @@ import subprocess
 import sys
 from scripts.pipeline.artifacts.image_reference import require_digest_reference
 
+IDENTITIES = Path(__file__).resolve().parents[3] / 'policies/release/signing-identities.json'
+
+
+def verify_repository_identity(provenance, repository, expected):
+    """Bind a renamed repository to signed immutable IDs, never just its old name."""
+    for entry in provenance:
+        certificate = entry.get('verificationResult', {}).get('signature', {}).get('certificate', {})
+        required = {
+            'sourceRepositoryIdentifier': expected['repository_id'],
+            'sourceRepositoryOwnerIdentifier': expected['owner_id'],
+            'sourceRepositoryURI': f'https://github.com/{repository}',
+            'sourceRepositoryRef': 'refs/heads/main',
+        }
+        if any(certificate.get(key) != value for key, value in required.items()):
+            raise ValueError('provenance não confirma os IDs e a origem do repositório renomeado')
+
 
 def verify_promotion(image, repository, reports=Path("reports")):
     require_digest_reference(image)
@@ -27,19 +43,45 @@ def verify_promotion(image, repository, reports=Path("reports")):
     if sorted(platforms) != ["linux/amd64", "linux/arm64"]:
         raise ValueError("índice deve conter exatamente amd64 e arm64")
     (reports / "candidate-index.json").write_text(raw)
-    workflow = f"{repository}/.github/workflows/build-base-images.yml"
-    commands = {
-        "signature": ["cosign", "verify", "--certificate-identity",
-                      f"https://github.com/{workflow}@refs/heads/main",
-                      "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com", image],
-        "provenance": ["gh", "attestation", "verify", f"oci://{image}", "--repo", repository,
-                       "--signer-workflow", workflow, "--source-ref", "refs/heads/main", "--format", "json"],
-    }
-    for name, command in commands.items():
-        output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
-        if not json.loads(output):
-            raise ValueError(f"nenhuma evidência verificada: {name}")
-        (reports / f"{name}.json").write_text(output)
+    expected = json.loads(IDENTITIES.read_text()).get(repository)
+    signers = [repository] + (expected['previous_names'] if expected else [])
+    for name in ('signature', 'provenance', 'verified-identity'):
+        (reports / f'{name}.json').unlink(missing_ok=True)
+    for position, signer in enumerate(signers):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", signer):
+            raise ValueError('identidade histórica inválida')
+        workflow = f"{signer}/.github/workflows/build-base-images.yml"
+        commands = {
+            "signature": ["cosign", "verify", "--certificate-identity",
+                          f"https://github.com/{workflow}@refs/heads/main",
+                          "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com", image],
+            "provenance": ["gh", "attestation", "verify", f"oci://{image}", "--repo", signer,
+                           "--signer-workflow", workflow, "--source-ref", "refs/heads/main", "--format", "json"],
+        }
+        evidence = {}
+        try:
+            for name, command in commands.items():
+                output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
+                parsed = json.loads(output)
+                if not isinstance(parsed, list) or not parsed:
+                    raise ValueError(f"nenhuma evidência verificada: {name}")
+                if name == 'provenance' and expected:
+                    verify_repository_identity(parsed, signer, expected)
+                evidence[name] = output
+        except subprocess.CalledProcessError:
+            if position == len(signers) - 1:
+                raise
+            continue
+        # Both verifiers must accept the SAME signer and digest. Never mix attempts.
+        for name, output in evidence.items():
+            (reports / f'{name}.json').write_text(output)
+        if expected:
+            (reports / 'verified-identity.json').write_text(json.dumps({
+                'repository': repository, 'signer_repository': signer,
+                'repository_id': expected['repository_id'], 'owner_id': expected['owner_id'],
+                'legacy_name': signer != repository, 'image': image,
+            }, indent=2) + '\n')
+        return
 
 
 def main():

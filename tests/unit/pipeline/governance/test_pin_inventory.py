@@ -31,7 +31,7 @@ class ParsingTests(unittest.TestCase):
             'jobs:\n  a:\n    steps:\n'
             '      - uses: actions/checkout@' + '1' * 40 + ' # v7\n'
             '      - uses: sloppy/action@v4\n'
-            '      - uses: alric-corp/itau-xj7-reusable-workflows/.github/workflows/validate-apko-images.yml@v1\n'
+            '      - uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/validate-apko-images.yml@v1\n'
             'env:\n'
             '  SKOPEO: quay.io/skopeo/stable@sha256:' + 'b' * 64 + '\n'
             '  TRIVY_VERSION: v0.72.0\n')
@@ -57,7 +57,7 @@ class ParsingTests(unittest.TestCase):
         loose = [entry for entry in entries if not entry['pinned']]
         self.assertEqual([entry['name'] for entry in loose], [
             'sloppy/action',
-            'alric-corp/itau-xj7-reusable-workflows/.github/workflows/validate-apko-images.yml'])
+            'alric-corp/alric-containers-reusable-workflows/.github/workflows/validate-apko-images.yml'])
 
     def test_the_same_input_with_two_digests_is_reported_as_divergence(self):
         divergences = inventory.consistency(inventory.pins(self.paths()))
@@ -115,11 +115,11 @@ class RepositoryTests(unittest.TestCase):
 class AvailabilityTests(unittest.TestCase):
     def test_reusable_workflow_commit_is_checked_at_its_origin(self):
         def run(argv, **kwargs):
-            self.assertEqual(argv[2], 'repos/alric-corp/itau-xj7-reusable-workflows/commits/' + 'a' * 40)
+            self.assertEqual(argv[2], 'repos/alric-corp/alric-containers-reusable-workflows/commits/' + 'a' * 40)
             return subprocess.CompletedProcess(
                 argv, 0, json.dumps({'sha': 'a' * 40}), '')
         entry = {'kind': 'reusable-workflow',
-                 'name': 'alric-corp/itau-xj7-reusable-workflows/.github/workflows/validate.yml',
+                 'name': 'alric-corp/alric-containers-reusable-workflows/.github/workflows/validate.yml',
                  'current': 'a' * 40, 'file': 'workflow.yml'}
         self.assertTrue(inventory.availability([entry], run)[0]['available'])
 

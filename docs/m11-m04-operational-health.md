@@ -95,6 +95,13 @@ internos de alerta, derivados da cadência observada:
 
 ### `unknown` não é aprovação, e `known` não é alerta novo
 
+Primeiro run hospedado em 10/09/2026: [34493238551](https://github.com/alric-corp/alric-containers-image-base/actions/runs/34493238551).
+Detectou o digest indisponível do Skopeo, uma lacuna histórica de 24,08h na
+promoção e truncamento após consultar 90 runs. O ajuste desta entrega filtra
+PRs/branches sem autorização de publicação e sobe o teto para 300. Contra os
+mesmos 92 runs reais, bastaram 53 consultas, sem truncamento; o alerta de
+agendamento permaneceu. A configuração nova ainda precisa entrar na `main`.
+
 - `alert` — limite rompido; o job falha.
 - `known` — exceção documentada em `exceptions`, com **motivo, dono e data de
   revisão obrigatórios**. Hoje só `dotnet8` (ver abaixo). Não falha o job.
@@ -156,3 +163,8 @@ check obrigatório compara o declarado com o `retention-days` real de cada
 produz digests novos e não recupera artifact vencido. A recuperação de
 `stable` por digest (M15) depende do ECR, não destes artifacts — o prazo aqui
 cobre auditoria e diagnóstico, não recuperação de imagem.
+
+A [lifecycle ECR](../policies/operations/ecr-lifecycle.json) foi aplicada e
+relida nos 15 repositórios do sandbox em 10/09/2026. Seleciona somente imagens
+sem tag após 30 dias; os previews selecionaram zero imagens. Releases e
+assinaturas com tag ficam preservadas. [Evidência](evidence/ecr-lifecycle-2026-09-10.json).
