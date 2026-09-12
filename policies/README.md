@@ -5,7 +5,7 @@ em `scripts/pipeline/` aplicam as regras; os workflows controlam a execução.
 
 | Arquivo | Consumidor | Responsabilidade |
 | --- | --- | --- |
-| `operations/health.json` | `operations/operational_health.py` | Donos, alertas, exceções, cron e retenção das evidências |
+| `operations/health.json` | `operations/operational_health.py`, `catalog/default_batch.py` | Donos, alertas, cron e retenção das evidências; `exceptions` é a lista de frameworks fora do lote padrão (motivo, dono, `review_by`, ADR) |
 | `operations/ecr-lifecycle.json` | ECR, após preview revisado | Expira somente imagens sem tag após 30 dias; preserva releases com tag |
 | `release/promotion-quarantine.json` | `release/find_promotion_candidate.py` | Digests retirados de stable que não podem ser promovidos novamente |
 | `release/signing-identities.json` | `release/verify_promotion.py` | Nome atual, nomes históricos e IDs imutáveis assinados do repositório e da organização |
@@ -15,6 +15,11 @@ Alterações passam por PR e revisão dos donos em `.github/CODEOWNERS`. O lint
 compara a política de retenção com os workflows locais e reutilizáveis reais.
 Quarentena é por digest e repositório, com motivo, autor e data; consulte o
 [runbook de recuperação](../README.md#recuperação-de-stable-runbook-m15).
+Uma exceção em `health.json` tira o framework dos três lotes de `workflow.yml`
+e o mantém no catálogo; o lint do lote padrão exige as duas coisas juntas, os
+lotes como literal canônico (nunca `vars`/`env`/`secrets`/`fromJSON`) e `adr`
+como caminho relativo `docs/adr/NNNN-titulo.md` na
+[convenção](../docs/adr/README.md).
 
 Estes arquivos não armazenam credenciais ou estado gerado de execução.
 

@@ -34,7 +34,7 @@ help:
 	@echo "  make clean                            remove chave e pacotes locais"
 	@echo "  make test-unit                        testes sem Docker, AWS ou rede"
 	@echo "  make test-integration                 certificados, TLS e contrato do reusable"
-	@echo "  make lint-local                       hardening e cobertura dos pins"
+	@echo "  make lint-local                       hardening, cobertura dos pins e lote padrao do catalogo"
 	@echo "  make check                            testes e lints (inclui checkout do reusable)"
 	@echo ""
 	@echo "Variaveis: ARCH (padrao: $(ARCH), detectado do host)"
@@ -60,6 +60,7 @@ test-integration:
 lint-local:
 	$(PYTHON) -B -m scripts.pipeline.governance.lint_workflow_hardening
 	$(PYTHON) -B -m scripts.pipeline.governance.pin_inventory lint
+	$(PYTHON) -B -m scripts.pipeline.catalog.default_batch lint
 
 lint-shared:
 	$(PYTHON) -B -m scripts.pipeline.governance.workflow_dependencies lint

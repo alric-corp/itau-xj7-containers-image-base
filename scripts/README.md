@@ -6,7 +6,7 @@ Actions compõe a execução; políticas revisadas ficam em [`policies/`](../pol
 | Domínio | Responsabilidade |
 | --- | --- |
 | `certificates/` | Aquisição, integridade e pins do bundle corporativo |
-| `pipeline/catalog/` | Entradas do catálogo, soak e digest |
+| `pipeline/catalog/` | Entradas do catálogo, soak, digest e lote padrão (catálogo − exclusões) |
 | `pipeline/artifacts/` | Formato OCI, identidade por digest e scans |
 | `pipeline/runtime/` | Contratos funcionais e readiness |
 | `pipeline/release/` | Candidatos, publicação, promoção e evidência de CVEs |

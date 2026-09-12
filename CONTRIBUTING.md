@@ -50,7 +50,7 @@ dos chamadores.
 | --- | --- |
 | `make test-unit` | Regras Python, arquitetura e filtros de CI; sem infraestrutura |
 | `make test-integration` | Certificados, TLS, adaptadores e contrato compartilhado |
-| `make lint-local` | Hardening dos workflows e cobertura/consistência dos pins |
+| `make lint-local` | Hardening dos workflows, cobertura/consistência dos pins e lote padrão do catálogo |
 | `make lint-shared` | SHA, inputs, Trivy, retenção e cron dos executores reais |
 | `make lint-workflows` | actionlint nos YAML locais e compartilhados |
 | `make check` | Todos os testes e lints acima |

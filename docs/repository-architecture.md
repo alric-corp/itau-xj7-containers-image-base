@@ -13,20 +13,20 @@ Os diretórios consumidos pelo contrato Apko (`frameworks/`, `distroless/`,
 | `frameworks/` | Catálogo declarativo de runtimes e variantes de build `-dev` |
 | `melange/` | Receita do pacote adicional de certificados; chaves e pacotes locais são ignorados pelo Git |
 | `scripts/certificates/` | Aquisição, verificação e pins do bundle corporativo |
-| `scripts/pipeline/catalog/` | Validação de framework, soak e digest antes de operações privilegiadas |
+| `scripts/pipeline/catalog/` | Validação de framework, soak e digest antes de operações privilegiadas; lote padrão = catálogo − exclusões |
 | `scripts/pipeline/artifacts/` | Índices OCI, referências por digest e execução de scans |
 | `scripts/pipeline/runtime/` | Contratos funcionais das imagens e readiness com limite de tempo |
 | `scripts/pipeline/release/` | Seleção de candidatos, publicação, promoção e evidência de CVEs |
 | `scripts/pipeline/operations/` | Saúde, tempos, resumos e versões efetivas das ferramentas |
 | `scripts/pipeline/governance/` | Hardening, pins, cache e contratos com workflows compartilhados |
-| `policies/operations/` | Limites, donos, retenção e exceções operacionais |
+| `policies/operations/` | Limites, donos, retenção e exceções operacionais (frameworks fora do lote padrão, com ADR) |
 | `policies/release/` | Quarentena de digests retirados de stable |
 | `.github/workflows/` | Gatilhos, permissões, concorrência e composição dos jobs |
 | `.github/scripts/` | Seis adaptadores temporários exigidos pelo executor publicado |
 | `tests/unit/pipeline/` | Testes por domínio, sem Docker, AWS, sockets ou acesso à rede |
 | `tests/integration/` | Certificados, servidor TLS real, adaptadores e contrato com o checkout compartilhado |
 | `tests/runtime/` | Probes e projetos mínimos executados nas imagens candidatas reais |
-| `docs/` | Arquitetura, decisões, runbooks e evidências revisadas |
+| `docs/` | Arquitetura, decisões (`docs/adr/`), runbooks e evidências revisadas |
 | `troubleshooting/` | Toolkit de diagnóstico com ciclo de vida separado das imagens base |
 
 O bundle corporativo de `scripts/certificates/` e a receita Mozilla em
