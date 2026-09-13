@@ -134,7 +134,7 @@ patamar distroless e cobre parte dos controles de hardened:
 | `go1-25` / `go1-25-dev` | runtime / build | só a base / `go-1.25` + shell | compilado (par) | separado em 10/09/2026 |
 | `nodejs22`, `nodejs24` e `-dev` | runtime / build | `nodejs-2x` / + `npm` + shell | interpretado (as quatro) | — |
 | `dotnet10` / `dotnet10-dev` | runtime / build | `aspnet-10-runtime` / `dotnet-10-sdk` + shell | compilado (par) | — |
-| `dotnet8` | único | `dotnet-8-sdk` | nenhum | **bloqueado pelo scan**: correção `8.0.129-r1` ainda não existe no repositório Wolfi consultado (verificado em 09/09/2026); nunca teve `stable` |
+| `dotnet8` | único | `dotnet-8-sdk` | nenhum | **bloqueado pelo scan**: correção `8.0.129-r1` ainda não existe no repositório Wolfi consultado (verificado em 09/09/2026 e 12/09/2026); nunca teve `stable`. **Fora do lote padrão** desde [ADR-0001](docs/adr/0001-dotnet8-fora-do-lote-padrao.md) |
 
 Dezessete definições, um repositório ECR por definição (os dois novos são
 criados pelo próprio publicador no primeiro build). `stable` existe para as
@@ -206,7 +206,7 @@ outra identidade invalida a verificação da promoção.
 | --- | --- | --- |
 | Scanner de container corporativo | O gate roda Trivy; a esteira corporativa levantada usa Veracode SCA agent-based, cuja documentação não lista Wolfi. Seis critérios de aceite abertos (cobertura, entrega por arquitetura, política válida, re-scan na promoção, credenciais, normalização de evidências). | AppSec + Containers Products |
 | Fonte corporativa de certificados (M10) | `make certificates` integra o bundle interno verificado ao pacote Melange e aos stores Apko; o manifesto atual contém CAs MOCK, rejeitadas para release. A fonte e o manifesto corporativos reais continuam pendentes. Ver [composição](docs/image-composition.md). | Containers Products + Segurança |
-| Catálogo | `dotnet8` sem correção disponível no Wolfi: retirar do catálogo ou aceitar exceção formal (hoje: exceção com revisão em 09/10/2026). | Containers Products |
+| Catálogo | `dotnet8` sem correção disponível no Wolfi: exceção formal registrada no [ADR-0001](docs/adr/0001-dotnet8-fora-do-lote-padrao.md) — fora do lote padrão, no catálogo, revisão em 09/10/2026, reinclusão condicionada ao pacote corrigido (aceite hospedado do build diário verde pendente). | Containers Products |
 | Canal e dono de alerta, SLA publicável | Política e limites versionados; `external_destination` deliberadamente `null`. O SLA precisa ser escrito sobre a cadência observada do cron, não a nominal. | Containers Products |
 
 ### 4. Manutenção ainda não ligada

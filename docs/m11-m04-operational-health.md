@@ -103,10 +103,14 @@ mesmos 92 runs reais, bastaram 53 consultas, sem truncamento; o alerta de
 agendamento permaneceu. A configuração nova ainda precisa entrar na `main`.
 
 - `alert` — limite rompido; o job falha.
-- `known` — exceção documentada em `exceptions`, com **motivo, dono e data de
-  revisão obrigatórios**. Hoje só `dotnet8` (ver abaixo). Não falha o job.
+- `known` — exceção documentada em `exceptions`, com **motivo, dono, data de
+  revisão e ADR obrigatórios**. Hoje só `dotnet8` (ver abaixo). Não falha o job.
   **Uma exceção com `review_by` vencida gera alerta própria**: a exceção
-  também não pode apodrecer em silêncio.
+  também não pode apodrecer em silêncio. Desde o
+  [ADR-0001](adr/0001-dotnet8-fora-do-lote-padrao.md), toda exceção está
+  também **fora do lote padrão** de `workflow.yml`; o lint
+  [`default_batch.py`](../scripts/pipeline/catalog/default_batch.py), no check
+  obrigatório, impede que a lista e os três lotes divirjam.
 - `unknown` — a medida não teve dado porque a busca de jobs foi truncada pelo
   limite de chamadas. Não é falha comprovada nem aprovação; o truncamento em
   si vira alerta, porque a resposta é medir melhor.
@@ -117,9 +121,13 @@ O scan bloqueia com 28 achados por arquitetura em `dotnet-8-*`, todos
 apontando correção em `8.0.129-r1`. O APKINDEX real de
 `packages.wolfi.dev/os` (conferido em 09/09/2026) publica no máximo
 `dotnet-8-sdk 8.0.127-r0` — **a versão corrigida não existe no repositório
-que o apko consulta**. Rebuild não resolve: depende de a Wolfi publicar o
-pacote, ou de retirar `dotnet8` do catálogo. Registrado como exceção com dono
-e revisão em 09/10/2026, não como "falha crônica que a gente ignora".
+que o apko consulta** (reconferido em 12/09/2026). Rebuild não resolve: depende
+de a Wolfi publicar o pacote, ou de retirar `dotnet8` do catálogo. Registrado
+como exceção com dono e revisão em 09/10/2026, não como "falha crônica que a
+gente ignora". Em 12/09/2026 o framework saiu do lote padrão
+([ADR-0001](adr/0001-dotnet8-fora-do-lote-padrao.md)): continua no catálogo e
+nesta tabela como `known`, deixa de pintar o build diário de vermelho, e o
+critério de reinclusão está no ADR.
 
 ## 3. Canal, dono e notificação
 

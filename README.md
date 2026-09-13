@@ -63,7 +63,7 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 | Node.js | 22 (LTS) | `nodejs-22`, `npm`, `busybox` | `image-base-nodejs22-dev` | `appuser` | build stage (tem npm e shell) |
 | Node.js | 24 (LTS) | `nodejs-24` | `image-base-nodejs24` | `appuser` | runtime final (sem npm/shell) |
 | Node.js | 24 (LTS) | `nodejs-24`, `npm`, `busybox` | `image-base-nodejs24-dev` | `appuser` | build stage (tem npm e shell) |
-| .NET | 8 (LTS) | `dotnet-8-sdk` | `image-base-dotnet8` | `appuser` | runtime final (SDK completo — ainda não separado, ver M07) |
+| .NET | 8 (LTS) | `dotnet-8-sdk` | `image-base-dotnet8` | `appuser` | runtime final (SDK completo — ainda não separado, ver M07). **Fora do lote padrão** ([ADR-0001](docs/adr/0001-dotnet8-fora-do-lote-padrao.md)): o Wolfi não publica a correção que o scan exige; só builda por `workflow_dispatch` e nunca teve `stable` |
 | .NET | 10 (LTS) | `aspnet-10-runtime` | `image-base-dotnet10` | `appuser` | runtime final (ASP.NET Core + .NET runtime, sem SDK/shell) |
 | .NET | 10 (LTS) | `dotnet-10-sdk`, `busybox` | `image-base-dotnet10-dev` | `appuser` | build stage (SDK completo + shell, para `dotnet publish`) |
 
@@ -276,6 +276,8 @@ O build do CI usa `apko build` uma única vez por framework para produzir um lay
 
 Relatórios JSON e digests dos manifests ficam nos artifacts `build-scans-<framework>-<tentativa>` por 30 dias. O layout aprovado, sua evidência e os SBOMs são transferidos em `validated-oci-<framework>` por três dias. Uma falha em qualquer arquitetura impede a disponibilização desse artifact para publicação.
 
+O **lote padrão** que `workflow.yml` passa aos três chamadores (`validate-pr`, build diário/push e promoção horária) é o catálogo `frameworks/*.yaml` menos os frameworks excluídos em `policies/operations/health.json` → `exceptions` — hoje só `dotnet8` ([ADR-0001](docs/adr/0001-dotnet8-fora-do-lote-padrao.md)). Um lint offline no check obrigatório ([default_batch.py](scripts/pipeline/catalog/default_batch.py)) reprova qualquer divergência entre as três listas e `catálogo − exclusões`; um framework excluído continua no catálogo e pode ser buildado por `workflow_dispatch`, com o mesmo gate.
+
 A validação usa matrix com `fail-fast: false`. **A publicação é independente por framework (M13):** cada leg do publicador exige o seu próprio artifact `validated-oci-<framework>` e falha, visível e sem publicar, se a validação daquele framework tiver reprovado — sem derrubar os demais do lote. Uma falha numa dependência comum, como o bundle melange, continua bloqueando todos. O job de publicação tem matrix própria e autenticação AWS restrita à `main`. Para publicar um subconjunto, uma execução manual pode selecionar os frameworks desejados.
 
 **Identidade do artefato (M02):** o publicador baixa o layout aprovado do mesmo run, verifica novamente sua integridade e usa Skopeo com `copy --all --preserve-digests`. O digest devolvido pela cópia precisa ser igual ao índice validado; não há novo build nem resolução de pacotes nesse job. Após copiar, o publicador lê a tag de volta e confere os bytes do índice e os manifests de ambas as arquiteturas contra a evidência validada. O artifact `publication-<framework>-<tentativa>` preserva essa comparação por 30 dias. A cópia foi comprovada em ECR exclusivo de teste e a leitura de volta em registry local; a integração completa na `main` ainda depende da validação do workflow autenticado.
@@ -296,7 +298,7 @@ Merge na `main` exige, sem exceção para administradores (`enforce_admins`):
 - **`test`** — testes unitários de pipeline, contratos entre repositórios e
   integração de certificados, sem AWS.
 - **`lint-workflows`** — `actionlint` nos oito workflows mantidos à mão, mais
-  três lints offline:
+  quatro lints offline:
   [lint_workflow_hardening.py](scripts/pipeline/governance/lint_workflow_hardening.py)
   (checkout sem `persist-credentials: false`, expressão `${{ }}` dentro de um
   `run`, job executor sem `timeout-minutes`, workflow sem `permissions` no
@@ -306,7 +308,11 @@ Merge na `main` exige, sem exceção para administradores (`enforce_admins`):
   arquivos diferentes); e
   [operational_health.py](scripts/pipeline/operations/operational_health.py) `lint`
   (retenção declarada na política divergente do `retention-days` real, cron
-  agendado sem declaração na política).
+  agendado sem declaração na política); e
+  [default_batch.py](scripts/pipeline/catalog/default_batch.py) `lint` (lote
+  padrão dos três chamadores diferente de `catálogo − exclusões` ou escrito
+  como expressão dinâmica em vez do literal canônico, ou exclusão sem motivo,
+  dono, `review_by` e ADR válido em `docs/adr/`).
 - **Uma aprovação**, com revisão de code owner nos caminhos do
   [CODEOWNERS](.github/CODEOWNERS) (manifests, workflows, actions,
   automação, testes, políticas de dependência, `melange` e `Makefile`).
