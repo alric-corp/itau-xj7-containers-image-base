@@ -1,5 +1,9 @@
 .DS_Store
 
+# Preferências pessoais de ferramentas de IA.
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Local Python environments and interpreter output.
 .venv/
 __pycache__/

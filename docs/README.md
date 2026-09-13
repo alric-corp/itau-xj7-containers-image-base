@@ -2,6 +2,7 @@
 
 | Necessidade | Documento |
 | --- | --- |
+| Trabalhar com Codex, Claude Code e Copilot | [Guia de engenharia com IA](ai/README.md) |
 | Consumir ou construir imagens | [README do produto](../README.md) |
 | Localizar responsabilidades e dependências | [Arquitetura](repository-architecture.md) |
 | Preparar ambiente e validar uma mudança | [Contribuição](../CONTRIBUTING.md) |
