@@ -3,6 +3,8 @@
 Executado com o próprio interpretador da imagem candidata. Mesmo contrato de
 ambiente e de saída dos projetos compilados em `projects/`.
 """
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import errno
 import json
 import os
@@ -39,6 +41,10 @@ for directory in writable_dirs:
     assert target.read_text() == 'ok'
     target.unlink()
 
+zone = ZoneInfo('America/Sao_Paulo')
+assert datetime(2026, 1, 15, tzinfo=zone).utcoffset() == timedelta(hours=-3)
+assert datetime(2018, 1, 15, tzinfo=zone).utcoffset() == timedelta(hours=-2)
+
 # Check the image's existing bundle separately from the injected test CA.
 bundle = ssl.create_default_context(cafile=env('IMAGE_CA_BUNDLE'))
 assert bundle.cert_store_stats()['x509_ca'] > 0, 'empty image CA bundle'
@@ -57,5 +63,5 @@ for key in ('TLS_TRUSTED_URL', 'TLS_UNTRUSTED_URL'):
         assert key == 'TLS_TRUSTED_URL', 'untrusted certificate accepted'
 print(json.dumps({'version': sys.version.split()[0], 'uid': os.getuid(), 'gid': os.getgid(),
                   'readonly': True, 'tmpfs': True, 'writable_dirs': True,
-                  'bundle_parse': True, 'tls_trusted': True,
+                  'timezone': True, 'bundle_parse': True, 'tls_trusted': True,
                   'tls_untrusted_rejected': True}))

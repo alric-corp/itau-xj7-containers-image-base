@@ -13,6 +13,7 @@ não pode virar vazamento de segredo.
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -33,12 +34,31 @@ COMMANDS = {
 RUNNER_FIELDS = ('RUNNER_OS', 'RUNNER_ARCH', 'RUNNER_NAME', 'ImageOS', 'ImageVersion')
 
 
+def parse_version(output):
+    # Chainguard and cosign print ASCII art before their GitVersion field.
+    field = re.search(r'(?m)^\s*GitVersion:\s*(\S+)', output)
+    if field:
+        return field.group(1)
+    version = re.search(r'(?i)(?:version[: /]+|aws-cli/|buildx\s+)(v?\d+(?:\.\d+)*(?:[+~.-][\w.-]+)?)', output)
+    if version:
+        return version.group(1)
+    python = re.search(r'^Python\s+(\S+)', output)
+    if python:
+        return python.group(1)
+    raise ValueError('version command produced no recognizable version')
+
+
 def collect(stage, run=subprocess.run, environment=None):
     environment = os.environ if environment is None else environment
     versions = {}
+    raw_versions = {}
     for name, argv in COMMANDS[stage].items():
         result = run(argv, check=True, capture_output=True, text=True, timeout=30)
-        versions[name] = (result.stdout + result.stderr).strip()
+        raw_versions[name] = (result.stdout + result.stderr).strip()
+        versions[name] = parse_version(raw_versions[name])
+    if stage == 'validation':
+        raw_versions['melange'] = Path('melange-repo/melange-version.txt').read_text().strip()
+        versions['melange'] = parse_version(raw_versions['melange'])
     # A imagem do Skopeo é fixada por digest no workflow que a usa; registrar
     # o digest efetivo aqui mantém a evidência da etapa completa sem repetir
     # o pin em outro lugar.
@@ -49,7 +69,7 @@ def collect(stage, run=subprocess.run, environment=None):
             'runner': {field: environment[field] for field in RUNNER_FIELDS
                        if field in environment},
             'pinned_images': {'skopeo': skopeo} if skopeo else {},
-            'versions': versions}
+            'versions': versions, 'version_output': raw_versions}
 
 
 if __name__ == '__main__':

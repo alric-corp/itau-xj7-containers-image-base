@@ -1,0 +1,10 @@
+include: distroless/image-base.yaml
+accounts:
+  groups:
+    - groupname: appuser
+      gid: 10000
+  users:
+    - username: appuser
+      uid: 10000
+      gid: 10000
+  run-as: "10000"

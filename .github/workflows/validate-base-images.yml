@@ -2,6 +2,10 @@
 name: Validate base images (reusable, no AWS)
 on:
   workflow_call:
+    outputs:
+      image-trust-result:
+        description: "Result of the default trust integration gate."
+        value: ${{ jobs.image-trust.outputs.result }}
     inputs:
       frameworks:
         description: "JSON array de frameworks a validar."
@@ -10,7 +14,11 @@ on:
 permissions:
   contents: read
 jobs:
+  image-trust:
+    uses: ./.github/workflows/test-image-composition.yml
   validate:
-    uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/validate-apko-images.yml@0459275b4a2ffbe6e8961041e7b93b41e88ba215 # reviewed shared workflows
+    uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/validate-apko-images.yml@7a9b055a462eeb8552d3404c26538b44e8ccd83f # reviewed shared workflows
     with:
       frameworks: ${{ inputs.frameworks }}
+      melange-config: image-base-ca-certificates.yaml
+      locked-build: true

@@ -14,7 +14,7 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^Makefile$/",
-        "/^\\.github/workflows/(?:build-base-images|test-promotion)\\.yml$/",
+        "/^\\.github/workflows/(?:build-base-images|test-promotion|test-image-composition)\\.yml$/",
         "/^scripts/pipeline/runtime/runtime_images\\.py$/"
       ],
       "matchStrings": [

@@ -16,7 +16,7 @@ on:
         type: choice
         required: true
         options: [nodejs22, nodejs24, nodejs22-dev, nodejs24-dev, python3-13, python3-14,
-                  go1-26, java21, dotnet10]
+                  go1-25, go1-26, java21, java25, dotnet10]
       artifact-run-id:
         description: 'Run containing the validated-oci artifact in this repository.'
         type: string
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   runtime:
-    uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/test-runtime-images.yml@0459275b4a2ffbe6e8961041e7b93b41e88ba215 # reviewed shared workflows
+    uses: alric-corp/alric-containers-reusable-workflows/.github/workflows/test-runtime-images.yml@7a9b055a462eeb8552d3404c26538b44e8ccd83f # reviewed shared workflows
     with:
       framework: ${{ inputs.framework }}
       artifact-run-id: ${{ inputs.artifact-run-id }}

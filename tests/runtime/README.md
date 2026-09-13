@@ -126,7 +126,7 @@ A cobertura é decidida em código versionado
 ausência de um artifact:
 
 - framework com contrato: evidência ausente é **falha**, não aprovação;
-- framework sem contrato (`go1-25`, `java25`, `dotnet8`, sem variante `-dev`;
+- framework sem contrato (`dotnet8`, sem variante `-dev`;
   `*-dev` compiladas, cobertas como estágio de build do par): publica com o
   motivo registrado no log e na tabela do run;
 - contrato compilado cujo par `-dev` não está no mesmo lote (um
@@ -164,6 +164,16 @@ primeira execução dos contratos compilados, sobre os artifacts reais do
 | `python3-13` | interpretado | passou | passou | 3.13.15 | — |
 | `nodejs22-dev` | interpretado | passou | passou | 22.23.2 | — |
 
+**10/09/2026, pares restantes do M07** ([evidence-2026-09-10-m07.json](evidence-2026-09-10-m07.json)):
+`go1-25`/`go1-25-dev` e `java25`/`java25-dev` construídos localmente com o
+apko fixado (x86_64+aarch64), preparados como no CI e executados pelo contrato
+compilado — Go 1.25.12 e Java 25.0.4.1 aprovados em amd64 emulado e arm64
+nativo, com shell e toolchain nas `-dev`. Camadas comprimidas por
+arquitetura: `go1-25` 231K vs `go1-25-dev` 239–255M; `java25` 85–87M vs
+`java25-dev` 115–118M. Depois, no runner hospedado, sobre os artifacts do
+`validate-pr` do PR #49 (run 34497811172): `go1-25` (run 34498586167) e
+`java25` (run 34498589927) aprovados em amd64 nativo e arm64 emulado por QEMU.
+
 **Teste negativo, não decorativo:** apontando as duas URLs de TLS para o
 **mesmo** servidor confiável, o contrato do `go1-26` falhou nas duas
 plataformas com `HTTPS com CA não confiável foi aceito` (saída 1). Antes
@@ -181,8 +191,8 @@ lados da checagem reagem.
 - Os tempos de build acima vêm de Rosetta no Mac; **QEMU no runner hospedado
   é mais lento** — o `timeout-minutes: 30` do job foi dimensionado com essa
   margem, mas o número real ainda precisa ser observado.
-- `go1-25`, `java25` e `dotnet8` continuam **sem contrato compilado**, porque
-  ainda não têm variante `-dev` (escopo restante do M07).
+- `dotnet8` continua **sem contrato compilado**, porque não tem variante
+  `-dev` — e não terá enquanto o scan o bloquear (decisão de catálogo).
 - O TLS usa uma CA sintética: testa os mecanismos de confiança dos runtimes,
   **não** comprova distribuição, pin, legitimidade ou confiança end-to-end do
   bundle corporativo. O parsing do bundle da imagem é um check separado.

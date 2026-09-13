@@ -1,6 +1,6 @@
 # Variante "dev": usada só no estágio de build (multi-stage) da aplicação,
 # pra compilar o binário estático. Nunca deve ser a imagem final publicada
-# em produção — para isso use go1-26.yaml (sem o toolchain do Go).
+# em produção — para isso use go1-25.yaml (sem o toolchain do Go).
 #
 # busybox entra pelo mesmo motivo do nodejs-dev: sem shell, um `RUN go
 # build ...` normal (shell-form) num Dockerfile falha com "/bin/sh: no
@@ -9,5 +9,5 @@
 include: distroless/runtime.yaml
 contents:
   packages:
-    - go-1.26
+    - go-1.25
     - busybox

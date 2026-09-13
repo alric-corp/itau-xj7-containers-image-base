@@ -36,7 +36,29 @@ def load_index(layout):
     return entries[0], index
 
 
-def verify(layout):
+def sboms(layout, digest, platforms):
+    expected = {'sbom-index.spdx.json': digest,
+                'sbom-x86_64.spdx.json': platforms['linux/amd64'],
+                'sbom-aarch64.spdx.json': platforms['linux/arm64']}
+    records = []
+    for name, subject in expected.items():
+        path = layout / 'sbom' / name
+        if path.is_symlink():
+            raise ValueError('SBOM must be a regular artifact file')
+        raw = path.read_bytes()
+        document = json.loads(raw)
+        describes = set(document.get('documentDescribes', []))
+        roots = [p for p in document.get('packages', []) if p.get('SPDXID') in describes]
+        if (document.get('spdxVersion') != 'SPDX-2.3' or len(roots) != 1
+                or not any(c.get('algorithm') == 'SHA256' and c.get('checksumValue') == subject[7:]
+                           for c in roots[0].get('checksums', []))):
+            raise ValueError(f'{name} does not describe its OCI subject {subject}')
+        records.append({'path': 'sbom/' + name, 'subject': subject,
+                        'sha256': hashlib.sha256(raw).hexdigest()})
+    return records
+
+
+def verify(layout, require_sbom=False):
     layout = Path(layout)
     descriptor, index = load_index(layout)
     platforms = {}
@@ -56,7 +78,10 @@ def verify(layout):
         platforms[name] = entry["digest"]
     if set(platforms) != {"linux/amd64", "linux/arm64"}:
         raise ValueError("índice deve conter amd64 e arm64")
-    return {"digest": descriptor["digest"], "platforms": platforms}
+    evidence = {"digest": descriptor["digest"], "platforms": platforms}
+    if require_sbom or (layout / 'sbom').exists():
+        evidence['sboms'] = sboms(layout, descriptor['digest'], platforms)
+    return evidence
 
 
 def prepare(layout):
@@ -72,7 +97,7 @@ def prepare(layout):
         "annotations": {"org.opencontainers.image.ref.name": "image"},
     }]}
     (layout / "index.json").write_text(json.dumps(wrapper))
-    evidence = verify(layout)
+    evidence = verify(layout, require_sbom=True)
     (layout / "validated-index.json").write_text(json.dumps(evidence, indent=2) + "\n")
     return evidence
 

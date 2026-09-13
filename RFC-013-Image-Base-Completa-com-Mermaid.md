@@ -68,7 +68,7 @@ de release em volta delas.
 | --- | --- |
 | Melange + Apko sobre pacotes Wolfi, sem Dockerfile de base | Docker Hub → ECR corporativo, um repositório por framework, tags imutáveis |
 | Um YAML por framework em `frameworks/`, `distroless/image-base.yaml` como base comum | `wolfi-base` retirado da base (trazia `apk` e shell para toda imagem "distroless") |
-| Pacote `bundle-pem-test` compilado pelo melange e consumido pelo apko | Scan nas **duas** arquiteturas (a POC escaneava só `latest-amd64` e publicava as duas) |
+| Pacote de certificados compilado pelo melange e consumido pelo apko | Scan nas **duas** arquiteturas (a POC escaneava só `latest-amd64` e publicava as duas) |
 | Usuário non-root `uid/gid 10000`, `work-dir: /app` | Publicação sem rebuild: o mesmo OCI escaneado é o que vai para o registry, digest comparado |
 | `Makefile` de build local via `docker run` | `stable` deixa de ser publicada no build: só promovida após soak com re-scan |
 | Duas versões por linguagem | Variantes runtime e `-dev` para Go, Java e .NET; contrato funcional por framework |
@@ -76,7 +76,7 @@ de release em volta delas.
 
 ### Componentes
 
-1. **Catálogo declarativo** — `distroless/image-base.yaml` (só `ca-certificates-bundle` + `bundle-pem-test`) e `frameworks/<nome>.yaml`, um por runtime/variante.
+1. **Catálogo declarativo** — `distroless/image-base.yaml` (`ca-certificates-bundle`, `tzdata` e âncoras adicionais aprovadas) e `frameworks/<nome>.yaml`, um por runtime/variante.
 2. **Validação sem credenciais** — melange compila o bundle nas duas arquiteturas; `apko build` gera **um** layout OCI multi-arquitetura por framework; Trivy escaneia cada manifest separadamente (`--ignore-unfixed`, `CRITICAL,HIGH,MEDIUM,LOW`, mais segredos). O layout aprovado vira artifact `validated-oci-<framework>`.
 3. **Contrato funcional** — executado sobre o próprio artifact candidato, nas duas arquiteturas, sem rebuild: Node e Python rodam um probe com o interpretador da imagem; Go, Java e .NET compilam um projeto mínimo versionado com a variante `-dev` e o executam na variante de runtime. Confere versão, UID/GID herdados, raiz somente leitura com áreas graváveis explícitas, bundle de CAs e TLS positivo/negativo.
 4. **Publicação por framework** — Skopeo copia o OCI aprovado para o ECR preservando digests, lê a tag de volta e compara; assina com cosign keyless e anexa provenance SLSA. Tag imutável `ddmmaa-hhmm-r<run>-a<tentativa>`.
@@ -118,7 +118,7 @@ patamar distroless e cobre parte dos controles de hardened:
 
 | Pilar | Estado em 10/09/2026 |
 | --- | --- |
-| Minimalismo | Base sem shell nem gerenciador de pacotes, comprovado por execução nas variantes finais de Node, Python, Go, Java e .NET. Go 1.26, Java 21 e .NET 10 têm runtime separado do toolchain; `go1-25`, `java25` e `dotnet8` ainda carregam o toolchain/SDK completo. |
+| Minimalismo | Base sem shell nem gerenciador de pacotes, comprovado por execução nas variantes finais de Node, Python, Go, Java e .NET. Go 1.25/1.26, Java 21/25 e .NET 10 têm runtime separado do toolchain; só `dotnet8` ainda carrega o SDK completo. |
 | Imutabilidade | Tags de build imutáveis no ECR (exceção só para `stable`), rejeição de sobrescrita comprovada nos 15 repositórios. Raiz somente leitura testada em contrato; continua dependendo da configuração do consumidor em runtime. |
 | Manutenção | Rebuild diário e promoção por soak em execução; ferramentas por SHA/digest com lint de cobertura. A entrega do agendador do GitHub é de melhor esforço (medido: 10% das ocorrências horárias viraram run), a automação de atualização (Renovate) não está ativa e a primeira execução de saúde no runner detectou o Skopeo indisponível e lacuna de agendamento. |
 | Verificabilidade | SBOM por build, assinatura cosign keyless e provenance SLSA no ECR, verificados na promoção e de forma independente fora do pipeline. Identidade do assinador vinculada ao ID numérico do repositório, não só ao nome. |
@@ -128,15 +128,17 @@ patamar distroless e cobre parte dos controles de hardened:
 | Framework | Variante | Conteúdo | Contrato funcional | Observação |
 | --- | --- | --- | --- | --- |
 | `java21` / `java21-dev` | runtime / build | `openjdk-21-jre` / `openjdk-21` + shell | compilado (par) | — |
-| `java25` | único | `openjdk-25` (JDK completo) | nenhum | sem variante `-dev` |
+| `java25` / `java25-dev` | runtime / build | `openjdk-25-jre` / `openjdk-25` + shell | compilado (par) | separado em 10/09/2026 |
 | `python3-13`, `python3-14` | runtime | `python-3.x` | interpretado | — |
 | `go1-26` / `go1-26-dev` | runtime / build | só a base / `go-1.26` + shell | compilado (par) | binário estático não precisa de runtime |
-| `go1-25` | único | `go-1.25` (toolchain) | nenhum | sem variante `-dev` |
+| `go1-25` / `go1-25-dev` | runtime / build | só a base / `go-1.25` + shell | compilado (par) | separado em 10/09/2026 |
 | `nodejs22`, `nodejs24` e `-dev` | runtime / build | `nodejs-2x` / + `npm` + shell | interpretado (as quatro) | — |
 | `dotnet10` / `dotnet10-dev` | runtime / build | `aspnet-10-runtime` / `dotnet-10-sdk` + shell | compilado (par) | — |
 | `dotnet8` | único | `dotnet-8-sdk` | nenhum | **bloqueado pelo scan**: correção `8.0.129-r1` ainda não existe no repositório Wolfi consultado (verificado em 09/09/2026); nunca teve `stable` |
 
-Quinze definições, quinze repositórios ECR. `stable` existe para catorze;
+Dezessete definições, um repositório ECR por definição (os dois novos são
+criados pelo próprio publicador no primeiro build). `stable` existe para as
+catorze publicadas até 10/09;
 `dotnet8` é reportado como exceção conhecida, com dono e data de revisão em
 [policies/operations/health.json](policies/operations/health.json).
 
@@ -154,10 +156,10 @@ o estado.
 | M04 | Soak, concorrência e agendamento | Concluído / medido | Serialização real, sem regressão nem dupla promoção; cron real observado | Cadência do cron é de melhor esforço — SLA precisa ser por lacuna, não por horário |
 | M05 | PR sem credenciais, trust policy | Concluído | PR interno rejeitado, fork real sem OIDC, policy por IDs numéricos | Recriar e reprovar no ambiente de produção |
 | M06 | Imutabilidade no ECR | Concluído | 15 repositórios `IMMUTABLE_WITH_EXCLUSION`; sobrescrita rejeitada de verdade | — |
-| M07 | Runtime separado do toolchain | Parcial | Go 1.26, Java 21 e .NET 10 separados, tamanho medido, apps mínimas executadas | `go1-25`, `java25`, `dotnet8` |
-| M08 | Testes funcionais das imagens | Parcial | 9 frameworks com contrato; gate por framework; Go/Java/.NET aprovados no runner em amd64/arm64 sobre artifacts do PR #48 | Cadeia com o gate ligado ainda sem run no runner hospedado; 3 frameworks sem contrato |
+| M07 | Runtime separado do toolchain | Parcial | Go 1.25/1.26, Java 21/25 e .NET 10 separados, tamanho medido, apps mínimas executadas nas duas arquiteturas | `dotnet8` (bloqueado pelo scan; separar não muda isso) |
+| M08 | Testes funcionais das imagens | Parcial | 11 frameworks com contrato; gate por framework; Go/Java/.NET aprovados no runner em amd64/arm64 sobre artifacts do PR #48; Go 1.25 e Java 25 aprovados localmente e no runner sobre artifacts do PR #49 | Cadeia com o gate ligado ainda sem run no runner hospedado; só `dotnet8` sem contrato |
 | M09 | Ferramentas fixadas e mantidas | Parcial | SHA/digest em tudo; lint de cobertura e consistência; versões efetivas por etapa; check de disponibilidade | Renovate inativo; Skopeo corrigido com tag `-immutable` + digest nesta branch; integrar e validar publicação |
-| M10 | Certificados com integridade verificável | Parcial | Parsing do bundle e TLS positivo/negativo nos 5 runtimes; script corporativo com manifesto SHA-256 | Mozilla agora fixado por data e SHA-256 nesta branch; fonte corporativa não integrada ao build |
+| M10 | Certificados com integridade verificável | Parcial | TLS com CA instalada por Melange/Apko nos 5 runtimes e nas duas arquiteturas; integração PEM/JKS/Node | Perfil público ativo; manifesto corporativo real ainda precisa substituir o MOCK |
 | M11 | Documentação, SLA e visibilidade | Parcial | CVEs sem correção visíveis; tabela por framework em cada run; saúde diária com política versionada | SLA não formalizado; canal externo de alerta não definido; saúde já executada, com alertas reais ainda abertos |
 | M12 | Checks obrigatórios | Concluído | `test` + `lint-workflows` exigidos, `enforce_admins`, merge com check falho rejeitado | — |
 | M13 | Publicação independente por framework | Concluído | `dotnet8` falha sem derrubar os demais; retry sem rebuild | — |
@@ -203,8 +205,8 @@ outra identidade invalida a verificação da promoção.
 | Decisão | Estado | De quem |
 | --- | --- | --- |
 | Scanner de container corporativo | O gate roda Trivy; a esteira corporativa levantada usa Veracode SCA agent-based, cuja documentação não lista Wolfi. Seis critérios de aceite abertos (cobertura, entrega por arquitetura, política válida, re-scan na promoção, credenciais, normalização de evidências). | AppSec + Containers Products |
-| Fonte corporativa de certificados (M10) | `scripts/certificates/certificados.sh` baixa e verifica os bundles CloudSec/Itaú por manifesto SHA-256, mas não participa da composição da imagem; `melange/bundle-pem-test.yaml` fixa o bundle Mozilla por data e verifica SHA-256 nesta branch. | Containers Products + Segurança |
-| Catálogo | `dotnet8` sem correção disponível no Wolfi: retirar do catálogo ou aceitar exceção formal (hoje: exceção com revisão em 09/10/2026). `go1-25` e `java25` sem variante `-dev` e sem contrato funcional. | Containers Products |
+| Fonte corporativa de certificados (M10) | `make certificates` integra o bundle interno verificado ao pacote Melange e aos stores Apko; o manifesto atual contém CAs MOCK, rejeitadas para release. A fonte e o manifesto corporativos reais continuam pendentes. Ver [composição](docs/image-composition.md). | Containers Products + Segurança |
+| Catálogo | `dotnet8` sem correção disponível no Wolfi: retirar do catálogo ou aceitar exceção formal (hoje: exceção com revisão em 09/10/2026). | Containers Products |
 | Canal e dono de alerta, SLA publicável | Política e limites versionados; `external_destination` deliberadamente `null`. O SLA precisa ser escrito sobre a cadência observada do cron, não a nominal. | Containers Products |
 
 ### 4. Manutenção ainda não ligada
@@ -221,7 +223,8 @@ O SHA em adoção ainda aguarda essa revisão no PR #2. Ver
 Contratos compilados de Go 1.26, Java 21 e .NET 10 aprovados no runner em
 amd64/arm64 sobre artifacts do PR #48 ([seis relatórios](docs/evidence/runtime-runner-2026-09-10.json)),
 mas a cadeia `validação → contrato → publicação` no mesmo run ainda não rodou no runner
-hospedado; `go1-25`, `java25` e `dotnet8` sem contrato; primeira promoção
+hospedado; `dotnet8` sem contrato; contratos de `go1-25`/`java25` só
+executados localmente; primeira promoção
 pós-renomeação sem run. A lifecycle policy foi aplicada e relida nos 15 ECRs:
 imagens sem tag após 30 dias; todas as releases com tag preservadas.
 

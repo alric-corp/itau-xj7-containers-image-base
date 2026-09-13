@@ -100,6 +100,9 @@ public final class Main {
     // mecanismo equivalente ao das outras linguagens, sem keytool (que não
     // existe garantidamente no runtime) e sem arquivo gravável.
     private static HttpClient client(String caFile) throws Exception {
+        if (caFile == null) {
+            return HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        }
         KeyStore store = KeyStore.getInstance("PKCS12");
         store.load(null, null);
         int index = 0;
@@ -152,6 +155,17 @@ public final class Main {
         return false;
     }
 
+    private static boolean timezoneWorks() {
+        var zone = java.time.ZoneId.of("America/Sao_Paulo");
+        for (int year : new int[] {2026, 2018}) {
+            int expected = (year == 2026 ? -3 : -2) * 3600;
+            int actual = java.time.ZonedDateTime.of(year, 1, 15, 12, 0, 0, 0, zone)
+                    .getOffset().getTotalSeconds();
+            if (actual != expected) fail("incorrect Sao Paulo offset: " + actual);
+        }
+        return true;
+    }
+
     public static void main(String[] args) throws Exception {
         String expected = env("EXPECTED_RUNTIME_VERSION");
         int feature = Runtime.version().feature();
@@ -167,7 +181,7 @@ public final class Main {
         if (!directories.contains("/tmp")) {
             fail("WRITABLE_DIRS precisa incluir /tmp");
         }
-        HttpClient client = client(env("TLS_CA_FILE"));
+        HttpClient client = client(System.getenv("TLS_CA_FILE"));
         // A ordem dos campos acompanha os contratos das outras linguagens.
         System.out.println("{"
                 + "\"version\": \"" + Runtime.version().toString() + "\", "
@@ -176,6 +190,7 @@ public final class Main {
                 + "\"readonly\": " + readonlyRoot(env("READONLY_PATH")) + ", "
                 + "\"tmpfs\": true, "
                 + "\"writable_dirs\": " + writable(directories) + ", "
+                + "\"timezone\": " + timezoneWorks() + ", "
                 + "\"bundle_parse\": " + bundleParses(env("IMAGE_CA_BUNDLE")) + ", "
                 + "\"tls_trusted\": " + trusted(client, env("TLS_TRUSTED_URL")) + ", "
                 + "\"tls_untrusted_rejected\": " + untrustedRejected(client, env("TLS_UNTRUSTED_URL"))

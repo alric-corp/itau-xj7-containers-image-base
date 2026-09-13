@@ -1,6 +1,6 @@
 # Variante "dev": usada só no estágio de build (multi-stage) da aplicação,
 # para compilar com `javac`/Maven/Gradle. Nunca deve ser a imagem final
-# publicada em produção — para isso use java21.yaml (JRE, sem javac/jmods).
+# publicada em produção — para isso use java25.yaml (JRE, sem javac/jmods).
 #
 # busybox entra pelo mesmo motivo do nodejs-dev: sem shell, um `RUN javac
 # ...` normal (shell-form) num Dockerfile falha, e os wrappers mvnw/gradlew
@@ -9,9 +9,9 @@
 include: distroless/java.yaml
 contents:
   packages:
-    - openjdk-21
+    - openjdk-25
     - busybox
 
 environment:
-  JAVA_HOME: /usr/lib/jvm/java-21-openjdk
-  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-21-openjdk/bin
+  JAVA_HOME: /usr/lib/jvm/java-25-openjdk
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/java-25-openjdk/bin

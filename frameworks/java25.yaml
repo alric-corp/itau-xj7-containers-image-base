@@ -1,26 +1,10 @@
-include: distroless/image-base.yaml
+# Variante "run": openjdk-25-jre (JRE), sem javac/jmods/javadoc/demos —
+# sem compilador. Compile em java25-dev.yaml (estágio de build) e copie o
+# JAR/classes para esta imagem no estágio final.
+include: distroless/java.yaml
 contents:
   packages:
-    - openjdk-25
-
-work-dir: /app
-
-accounts:
-  groups:
-    - groupname: spring
-      gid: 10000
-  users:
-    - username: spring
-      uid: 10000
-      gid: 10000
-  run-as: spring
-
-paths:
-  - path: /app
-    type: directory
-    uid: 10000
-    gid: 10000
-    permissions: 0o755
+    - openjdk-25-jre
 
 environment:
   JAVA_HOME: /usr/lib/jvm/java-25-openjdk

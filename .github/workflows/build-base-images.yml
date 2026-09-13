@@ -170,6 +170,11 @@ jobs:
           python3 -B -m scripts.pipeline.runtime.runtime_images --gate "$FRAMEWORK" \
             --requested "$FRAMEWORKS" --reports runtime-gate
 
+      - name: Require successful default trust integration
+        env:
+          TRUST_RESULT: ${{ needs.validate.outputs.image-trust-result }}
+        run: test "$TRUST_RESULT" = success
+
       - name: Verify artifact integrity and platforms
         id: verified
         run: |
@@ -280,6 +285,11 @@ jobs:
           set -eu
           cosign sign --yes "${IMAGE_REF}"
 
+      - name: Attest original SPDX SBOMs for index and both architectures
+        env:
+          IMAGE_REF: ${{ steps.publish.outputs.image_ref }}
+        run: python3 -B -m scripts.pipeline.release.publish_sboms image.oci "$IMAGE_REF"
+
       # Build provenance (SLSA) nativo do GitHub Actions: registra como,
       # onde (este workflow/run) e a partir de qual commit a imagem foi
       # construída. Fica disponível via `gh attestation verify` e, com
@@ -301,6 +311,10 @@ jobs:
             published.digest
             published-index.json
             publication-evidence.json
+            sbom-publication.json
+            image.oci/sbom/
+            image.oci/apko.lock.json
+            image.oci/build-inputs.json
             skopeo-version.txt
             tool-versions.json
           retention-days: 30

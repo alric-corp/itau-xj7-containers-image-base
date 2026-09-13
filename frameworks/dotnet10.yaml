@@ -2,26 +2,7 @@
 # sem `dotnet build`/`dotnet publish`/compilador. Publique em
 # dotnet10-dev.yaml (estágio de build) e copie a saída de
 # `dotnet publish` para esta imagem no estágio final.
-include: distroless/image-base.yaml
+include: distroless/runtime.yaml
 contents:
   packages:
     - aspnet-10-runtime
-
-work-dir: /app
-
-accounts:
-  groups:
-    - groupname: appuser
-      gid: 10000
-  users:
-    - username: appuser
-      uid: 10000
-      gid: 10000
-  run-as: appuser
-
-paths:
-  - path: /app
-    type: directory
-    uid: 10000
-    gid: 10000
-    permissions: 0o755

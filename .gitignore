@@ -25,3 +25,6 @@ sbom-*.json
 
 # Reviewed reusable workflows checked out for offline CI contract checks.
 .reusable-workflows/
+
+# Isolated CA integration builds (including ephemeral test keys).
+.composition-fixture-*/

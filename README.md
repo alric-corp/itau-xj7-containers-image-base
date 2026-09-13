@@ -12,7 +12,7 @@ Imagens base **distroless multi-arquitetura** (`amd64`/`arm64`) para **Java, Pyt
   - [Como usar](#como-usar)
   - [Estrutura do repositório](#estrutura-do-repositório)
   - [Como as imagens são compostas](#como-as-imagens-são-compostas)
-  - [O pacote `bundle-pem-test` (melange)](#o-pacote-bundle-pem-test-melange)
+  - [O pacote `image-base-ca-certificates` (melange)](#o-pacote-image-base-ca-certificates-melange)
   - [Pipeline de CI/CD (GitHub Actions)](#pipeline-de-cicd-github-actions)
   - [Checks obrigatórios, revisão e endurecimento (M12/M16)](#checks-obrigatórios-revisão-e-endurecimento-m12m16)
   - [Gate de promoção para stable (canário de soak)](#gate-de-promoção-para-stable-canário-de-soak)
@@ -41,8 +41,8 @@ Imagens "Distroless" contêm apenas o aplicativo e suas dependências de tempo d
 Neste repositório isso se traduz em quatro garantias concretas, já padronizadas em todas as imagens:
 
 - **Camada única (single layer):** o `apko` não empilha `RUN` como um Dockerfile faz — ele resolve o grafo de dependências dos pacotes Wolfi e escreve o resultado final numa única camada, sem cache de gerenciador de pacotes, arquivo temporário ou camada intermediária "fantasma" sobrando na imagem publicada.
-- **Superfície de ataque mínima:** `distroless/image-base.yaml` (herdado por todo `frameworks/<nome>.yaml`) só traz `ca-certificates-bundle` + `bundle-pem-test` — **sem `wolfi-base`**, que traria `apk-tools` e `busybox` (shell) de brinde via dependência transitiva. Cada `frameworks/<nome>.yaml` só declara o runtime que precisa (ex.: `openjdk-21`) em cima disso — sem shell, gerenciador de pacotes, compilador ou ferramentas de rede além do estritamente necessário, para todas as linguagens. Todas as imagens rodam como usuário non-root por padrão (`spring` ou `appuser`, uid/gid 10000). Node.js é o único runtime que depende de um gerenciador de pacotes (`npm`) para instalar dependências — por isso ele é o único com duas variantes: `nodejsNN` (runtime final, sem `npm`/`busybox`/shell) e `nodejsNN-dev` (com `npm`/`busybox`, usada só no estágio de build). A imagem que efetivamente vai pra produção nunca tem shell nem `apk`.
-- **Cadeia de suprimentos (supply chain) rastreável:** os pacotes vêm do repositório rolling-release do [Wolfi](https://github.com/wolfi-dev) (assinado e mantido pela Chainguard); o único pacote que não vem de lá (`bundle-pem-test`) é compilado neste próprio repositório via melange, com índice assinado por uma chave efêmera gerada a cada build. Não existe imagem base de terceiros nem `FROM` de uma tag de procedência desconhecida.
+- **Superfície de ataque mínima:** `distroless/image-base.yaml` (herdado por todo `frameworks/<nome>.yaml`) só traz `ca-certificates-bundle`, `tzdata` e `image-base-ca-certificates` — **sem `wolfi-base`**, que traria `apk-tools` e `busybox` (shell) de brinde via dependência transitiva. Cada `frameworks/<nome>.yaml` só declara o runtime que precisa (ex.: `openjdk-21`) em cima disso — sem shell, gerenciador de pacotes, compilador ou ferramentas de rede além do estritamente necessário, para todas as linguagens. Todas as imagens rodam como usuário non-root por padrão (`spring` ou `appuser`, uid/gid 10000). As variantes `-dev` trazem o toolchain e shell para o estágio de build; as variantes de runtime usam somente os pacotes necessários à execução. A imagem que efetivamente vai pra produção nunca tem shell nem `apk`.
+- **Cadeia de suprimentos (supply chain) rastreável:** os pacotes vêm do repositório rolling-release do [Wolfi](https://github.com/wolfi-dev) (assinado e mantido pela Chainguard); o único pacote que não vem de lá (`image-base-ca-certificates`) é compilado neste próprio repositório via melange, com índice assinado por uma chave efêmera gerada a cada build. Não existe imagem base de terceiros nem `FROM` de uma tag de procedência desconhecida.
 - **SBOM e scan em todo build:** o `apko` gera um SBOM (SPDX) a cada build, e o [Trivy](#pipeline-de-cicd-github-actions) escaneia a imagem localmente antes de qualquer push — uma CVE `CRITICAL`/`HIGH`/`MEDIUM`/`LOW` **com correção disponível** falha o pipeline e impede o job de publicação daquele run (veja [`ignore-unfixed`](#pipeline-de-cicd-github-actions)).
 
 ## Imagens disponíveis
@@ -51,10 +51,12 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 |---|---|---|---|---|---|
 | Java | 21 (LTS) | `openjdk-21-jre` | `image-base-java21` | `spring` | runtime final (sem `javac`/jmods/shell) |
 | Java | 21 (LTS) | `openjdk-21`, `busybox` | `image-base-java21-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
-| Java | 25 (LTS) | `openjdk-25` | `image-base-java25` | `spring` | runtime final (JDK completo — ainda não separado, ver M07) |
+| Java | 25 (LTS) | `openjdk-25-jre` | `image-base-java25` | `spring` | runtime final (sem `javac`/jmods/shell) |
+| Java | 25 (LTS) | `openjdk-25`, `busybox` | `image-base-java25-dev` | `spring` | build stage (JDK completo + shell p/ mvnw/gradlew) |
 | Python | 3.13 | `python-3.13` | `image-base-python3-13` | `appuser` | runtime final |
 | Python | 3.14 | `python-3.14` | `image-base-python3-14` | `appuser` | runtime final |
-| Go | 1.25 | `go-1.25` | `image-base-go1-25` | `appuser` | runtime final (toolchain completo — ainda não separado, ver M07) |
+| Go | 1.25 | *(nenhum — só a base distroless)* | `image-base-go1-25` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
+| Go | 1.25 | `go-1.25`, `busybox` | `image-base-go1-25-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Go | 1.26 | *(nenhum — só a base distroless)* | `image-base-go1-26` | `appuser` | runtime final (binário estático, sem toolchain/shell) |
 | Go | 1.26 | `go-1.26`, `busybox` | `image-base-go1-26-dev` | `appuser` | build stage (toolchain completo + shell) |
 | Node.js | 22 (LTS) | `nodejs-22` | `image-base-nodejs22` | `appuser` | runtime final (sem npm/shell) |
@@ -67,6 +69,8 @@ Neste repositório isso se traduz em quatro garantias concretas, já padronizada
 
 **⚠️ Migração (09/09/2026):** `image-base-go1-26`, `image-base-dotnet10` e `image-base-java21` deixaram de conter o toolchain de build (Go, SDK do .NET, JDK) e passaram a ser runtime-only, seguindo o mesmo padrão que `image-base-nodejs22`/`nodejs24` já usavam. Quem consumia essas três tags para **compilar** (não só rodar) precisa migrar para as novas tags `-dev` (`image-base-go1-26-dev`, `image-base-dotnet10-dev`, `image-base-java21-dev`), que mantêm o toolchain completo — veja os exemplos de Dockerfile multi-stage abaixo. `go1-25`, `dotnet8` e `java25` ainda não passaram por essa separação (continuam com o toolchain completo na tag única).
 
+**⚠️ Migração (10/09/2026):** o mesmo movimento para `image-base-go1-25` e `image-base-java25` — passaram a ser runtime-only (`go1-25` só a base; `java25` com `openjdk-25-jre`). Quem compilava com essas tags deve usar `image-base-go1-25-dev`/`image-base-java25-dev` no estágio de build. Dos frameworks do catálogo, só `dotnet8` continua sem a separação.
+
 Referência completa de uma imagem: `<registro-ecr>/image-base-<framework>:<tag>`, onde `<registro-ecr>` é `<conta-aws>.dkr.ecr.<região>.amazonaws.com`.
 
 Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um build imutável sobrevive à janela de soak sem novas CVEs — veja [Gate de promoção](#gate-de-promoção-para-stable-canário-de-soak)) e **`<ddmmaa>-<hhmm>-r<run_id>-a<tentativa>`** (identificador único por execução/tentativa; as tags históricas `ddmmaa-hhmm` continuam reconhecidas pelo seletor).
@@ -74,7 +78,7 @@ Cada imagem publicada tem duas tags: **`stable`** (só avança depois que um bui
 ## Pré-requisitos
 
 - **Consumir as imagens:** um cliente OCI (`docker`, `podman`, `nerdctl`...) autenticado no ECR (`aws ecr get-login-password`).
-- **Build/CI local:** Docker Engine com suporte a `--privileged` (usado pelo melange) — nada de `apko`/`melange` instalado à parte, o [`Makefile`](Makefile) roda os dois via `docker run`. Não precisa de credencial AWS para build local (`apko publish --local` não toca em nenhum registry).
+- **Build/CI local:** Docker Engine com suporte a `--privileged` (usado pelo melange) — nada de `apko`/`melange` instalado à parte, o [`Makefile`](Makefile) roda os dois via `docker run`. Não precisa de credencial AWS para build local (o OCI é construído e carregado no Docker local).
 - **CI (push real):** uma role AWS com permissão de `ecr:*` no(s) repositório(s) alvo, assumível via OIDC pelo GitHub Actions (sem access key de longa duração) — veja [Configuração dos workflows reusáveis](#configuração-dos-workflows-reusáveis).
 
 ## Como usar
@@ -199,10 +203,10 @@ Todo `frameworks/<nome>.yaml` usa `include: distroless/image-base.yaml`, herdand
 flowchart TD
     subgraph Base["distroless/image-base.yaml<br/>(sem wolfi-base: nada de apk/shell)"]
         B2["ca-certificates-bundle<br/>(trust store oficial do Wolfi)"]
-        B3["bundle-pem-test<br/>(apk compilado pelo melange)"]
+        B3["image-base-ca-certificates<br/>(apk compilado pelo melange)"]
     end
 
-    Base -- "include:" --> J["java21.yaml (JRE) + java25.yaml (JDK)<br/>openjdk-21-jre / openjdk-25 · user spring"]
+    Base -- "include:" --> J["java21.yaml + java25.yaml (JRE)<br/>openjdk-21-jre / openjdk-25-jre · user spring"]
     Base -- "include:" --> JD["java21-dev.yaml<br/>openjdk-21 (JDK), só build stage · user spring"]
     Base -- "include:" --> N["nodejs22.yaml + nodejs24.yaml<br/>runtime final, sem npm/busybox · user appuser"]
     Base -- "include:" --> ND["nodejs22-dev.yaml + nodejs24-dev.yaml<br/>+ npm + busybox, só build stage · user appuser"]
@@ -210,7 +214,7 @@ flowchart TD
     Base -- "include:" --> GD["go1-26-dev.yaml<br/>go-1.26, só build stage · user appuser"]
     Base -- "include:" --> DN["dotnet10.yaml<br/>aspnet-10-runtime, sem SDK · user appuser"]
     Base -- "include:" --> DND["dotnet10-dev.yaml<br/>dotnet-10-sdk, só build stage · user appuser"]
-    Base -- "include:" --> OUT["... Python, go1-25, dotnet8 e java25<br/>ainda sem separação run/dev (M07)"]
+    Base -- "include:" --> OUT["... Python (runtime) e dotnet8<br/>(SDK, ainda sem separação run/dev)"]
 ```
 
 (a tabela [Imagens disponíveis](#imagens-disponíveis) acima tem a lista completa e exata dos 12 arquivos)
@@ -225,25 +229,21 @@ Critério de escolha das versões (no momento em que este README foi escrito):
 | Python | `python-3.13` | `python-3.14` | as duas últimas minors estáveis (Python não tem trilha LTS separada) |
 | Go | `go-1.25` | `go-1.26` | as duas últimas minors estáveis (Go também não tem trilha LTS separada) |
 
-O Wolfi é um repositório rolling-release, então cada `apko build`/`apko publish` já puxa o patch mais recente de cada uma dessas linhas automaticamente (ex.: `openjdk-21` sempre traz o último `21.0.x`).
+O Wolfi é um repositório rolling-release. Cada build novo resolve um lock com os patches disponíveis; o build e seus replays usam as versões e checksums registrados nesse lock.
 
 > **Nota:** o pacote `nodejs-*` do Wolfi não traz `npm` funcional sozinho — o `npm` usa `#!/usr/bin/env node` no shebang e o `/usr/bin/env` só existe se o pacote `busybox` também for instalado. Por isso as variantes `-dev` incluem `busybox` explicitamente — e por isso o `npm`/`busybox` ficam isolados nessa variante em vez de irem para a imagem de runtime final.
 
-## O pacote `bundle-pem-test` (melange)
+## O pacote `image-base-ca-certificates` (melange)
 
-O melange builda um pacote `.apk` próprio que baixa o bundle de certificados da Mozilla (a mesma fonte usada pelo `curl`/`certifi`) e o instala em `/etc/ssl/certs/bundle.pem`. Esse `.apk`, junto com o índice assinado, vira um repositório local que o `apko` consome via `--repository-append`/`--keyring-append` — sem precisar publicar esse pacote em nenhum repositório público.
+O `certificados.sh` busca e verifica os certificados. `make certificates` separa
+as CAs do bundle interno em âncoras individuais; o Melange as empacota e o Apko
+as incorpora ao bundle do sistema e ao truststore Java. Node usa o mesmo bundle
+por `NODE_EXTRA_CA_CERTS`. O perfil padrão contém as raízes públicas do Wolfi;
+o manifesto corporativo atual é MOCK e não entra em releases.
 
-> **Nota (POC caseira vs. ambiente Itaú):** este pacote existe hoje pra validar o pipeline melange → apko com uma fonte de certificado pública, já que o script real usado no Itaú (que baixa o ca-bundle governado pelo CloudSec — Artifactory, Proxy, AWS, certificados corporativos — de um bucket S3 e concatena com o bundle da Mozilla) só é acessível de dentro da rede corporativa. Antes de tratar isso como produção, vale fixar um hash conhecido do `cacert.pem` (hoje o `curl` não valida integridade além de checar se o arquivo tem um `BEGIN CERTIFICATE`) e isolar claramente o passo "buscar CA bundle" para ser o ponto de troca quando migrar pro script do CloudSec.
-
-```mermaid
-flowchart LR
-    A["melange/bundle-pem-test.yaml"] --> B["melange build<br/>(sandbox bwrap)"]
-    B --> C["curl https://curl.se/ca/cacert.pem<br/>(bundle da Mozilla)"]
-    C --> D["/etc/ssl/certs/bundle.pem"]
-    D --> E["apk assinado<br/>packages/&lt;arch&gt;/bundle-pem-test-*.apk"]
-    E --> F[("APKINDEX local<br/>(melange-repo)")]
-    F -- "--repository-append<br/>--keyring-append" --> G["apko build / apko publish"]
-```
+A [documentação de composição](docs/image-composition.md) explica essa divisão,
+os testes de TLS com a CA instalada na imagem, timezone, camadas, lockfiles,
+annotations e a publicação dos SBOMs originais por digest.
 
 ## Pipeline de CI/CD (GitHub Actions)
 
@@ -414,7 +414,7 @@ jobs:
     with:
       aws-region: us-east-1
       aws-role-arn: arn:aws:iam::<conta>:role/github-actions-image-base
-      frameworks: '["java25", "nodejs24", "nodejs24-dev"]'
+      frameworks: '["java25", "java25-dev", "nodejs24", "nodejs24-dev"]'
 
   promote-images:
     uses: <sua-org>/image-base/.github/workflows/promote-stable.yml@main
@@ -422,7 +422,7 @@ jobs:
       aws-region: us-east-1
       aws-role-arn: arn:aws:iam::<conta>:role/github-actions-image-base
       soak-hours: 6
-      frameworks: '["java25", "nodejs24", "nodejs24-dev"]'
+      frameworks: '["java25", "java25-dev", "nodejs24", "nodejs24-dev"]'
 ```
 
 | Nome | Workflow | Tipo | Obrigatório | Descrição |
@@ -440,12 +440,12 @@ O [`Makefile`](Makefile) automatiza o build local — melange e apko sempre roda
 
 ```bash
 make list                                                # lista os frameworks disponiveis
-make build FRAMEWORK=go1-26                               # builda uma imagem local (apko publish --local)
+make build FRAMEWORK=go1-26                               # compõe o OCI e carrega no Docker local
 make run FRAMEWORK=go1-26-dev ENTRYPOINT=/usr/bin/go ARGS=version  # builda e roda um comando na imagem (toolchain só existe na variante -dev)
 make clean                                                # remove chave e pacotes locais
 ```
 
-`make build` builda o pacote `bundle-pem-test` com o melange (gerando uma chave de assinatura local descartável) e depois usa `apko publish --local`, que carrega a imagem direto no Docker daemon local sem tocar em nenhum registry — no CI, `apko build` gera um layout OCI escaneado pelo Trivy por arquitetura. O `ARCH` é detectado automaticamente a partir do host (pode ser sobrescrito, ex.: `make build FRAMEWORK=go1-26 ARCH=x86_64`). Build local não precisa de credencial AWS — só entra em jogo quando o CI publica de fato no ECR.
+`make build` compila o pacote de âncoras com o Melange, resolve um lockfile e compõe um OCI com data fixa. Depois carrega a arquitetura selecionada no Docker, sem reconstrução. `make oci` conserva somente o layout; `LOCKFILE=<arquivo>` permite replay com as mesmas versões. O `ARCH` é detectado do host e pode ser sobrescrito. As ferramentas continuam executando via Docker, sem credenciais AWS para build local.
 
 ## Conclusão
 
