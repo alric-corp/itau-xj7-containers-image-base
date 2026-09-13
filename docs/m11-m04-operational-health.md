@@ -49,6 +49,12 @@ código versionado que monta a matriz de contratos
 - **atraso de fila** (`created_at` → `run_started_at`): espera por runner,
   não duração de job.
 
+O mesmo workflow executa `pin_inventory check`: além dos pins de ferramentas,
+compara a signing key Wolfi remota com o pin local. Divergência e endpoint
+indisponível falham health após preservar evidência; não atualizam a chave e
+não são dependência dos builds. Donos/canal permanecem os da policy existente.
+Consulte [rotação e limite de auto-discovery](wolfi-signing-key.md).
+
 ### Como cada run agendado é atribuído ao seu cron
 
 A API do GitHub **não expõe** `github.event.schedule` num run. Adivinhar pelo

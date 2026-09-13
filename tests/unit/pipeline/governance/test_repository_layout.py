@@ -12,7 +12,7 @@ LEGACY_ADAPTERS = {'runtime_images.py', 'validate_inputs.py', 'oci_artifact.py',
                    'scan_images.py', 'tool_versions.py', 'report_unfixed_cves.py'}
 GENERATED_WORKFLOWS = {'cve-triage.lock.yml'}
 DEPENDENCIES = {
-    'artifacts': set(), 'catalog': set(), 'governance': set(),
+    'artifacts': {'governance'}, 'catalog': set(), 'governance': set(),
     'runtime': {'artifacts'}, 'release': {'artifacts'},
     'operations': {'governance', 'runtime'},
 }
@@ -75,7 +75,7 @@ class RepositoryLayoutTests(unittest.TestCase):
                                           'tests/runtime', '.github/scripts')
                    for path in (ROOT / directory).rglob('*')
                    if path.is_file() and path.suffix in ('.py', '.sh', '.yaml', '.cjs',
-                                                         '.sha256', '.txt', '.json', '.go', '.cs', '.java')]
+                                                         '.sha256', '.pub', '.txt', '.json', '.go', '.cs', '.java')]
         for event in ('push', 'pull_request'):
             for path in sources:
                 relative = path.relative_to(ROOT).as_posix()

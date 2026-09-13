@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 import subprocess
 
+from scripts.pipeline.governance.wolfi_trust import require_key
+
 
 def command(args):
     return subprocess.check_output(args, text=True).strip()
@@ -25,6 +27,7 @@ def build(framework, output, engine='native', repository='melange-repo/packages'
     config = Path('frameworks') / (framework + '.yaml')
     if not config.is_file():
         raise ValueError('unknown framework')
+    require_key(Path.cwd())
     revision = command(['git', 'rev-parse', 'HEAD'])
     epoch = int(command(['git', 'show', '-s', '--format=%ct', 'HEAD']))
     date = datetime.fromtimestamp(epoch, timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')

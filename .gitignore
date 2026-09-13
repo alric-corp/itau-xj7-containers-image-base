@@ -21,6 +21,7 @@ melange/packages/
 melange/melange-cache/
 *.rsa
 *.rsa.pub
+!melange/keys/wolfi-signing.rsa.pub
 
 # apko/docker build artifacts
 *.tar

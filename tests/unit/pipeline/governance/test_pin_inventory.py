@@ -110,6 +110,9 @@ class RepositoryTests(unittest.TestCase):
             inventory.dependabot_ecosystems(inventory.load_dependabot()))
         self.assertEqual(inventory.lint(entries), [])
         self.assertTrue(entries)
+        key = inventory.wolfi_trust.local_pin()
+        self.assertEqual(inventory.lint([key]), [])
+        self.assertEqual(key['name'], 'wolfi-signing-key')
 
 
 class AvailabilityTests(unittest.TestCase):

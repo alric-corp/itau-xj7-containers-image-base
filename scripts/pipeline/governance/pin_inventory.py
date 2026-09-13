@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manutenção verificável das ferramentas fixadas (M09).
+"""Manutenção verificável das ferramentas e da trust anchor Wolfi (M09/P1-03).
 
 Três perguntas diferentes, respondidas separadamente:
 
@@ -15,6 +15,10 @@ Três perguntas diferentes, respondidas separadamente:
 3. `prs` (rede): as PRs de atualização abertas por esses gerenciadores estão
    sendo revisadas, ou envelhecendo sem ninguém olhar?
 
+`trust` verifica offline a chave pública Wolfi versionada e seus keyrings.
+Esse pin exige revisão humana, nunca proposta/aplicação automática. `check`
+compara a chave atual da origem somente para detectar rotação/divergência.
+
 Nada aqui copia versão ou SHA de exemplo genérico: os pins vêm dos arquivos
 do próprio repositório e a checagem confirma origem e disponibilidade.
 """
@@ -25,6 +29,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+
+from scripts.pipeline.governance import wolfi_trust
 
 ROOT = Path(__file__).resolve().parents[3]
 # Gerado por `gh aw compile` a partir de cve-triage.md; os pins dele são
@@ -127,6 +133,9 @@ def coverage(entries, renovate, dependabot):
     """Quem propõe a atualização de cada pin; sem ninguém, é uma lacuna."""
     for entry in entries:
         managers = []
+        if entry['kind'] == 'local-key':
+            entry['managers'] = ['human-review']
+            continue
         if entry['kind'] in ('action', 'reusable-workflow') and 'github-actions' in dependabot \
                 and entry['file'].startswith('.github/workflows/'):
             managers.append('dependabot')
@@ -157,6 +166,9 @@ def lint(entries):
     """Problemas offline: pin frouxo, pin sem gerenciador, valor divergente."""
     problems = []
     for entry in entries:
+        if entry['kind'] == 'local-key':
+            problems.extend(entry['errors'])
+            continue
         if not entry['pinned']:
             problems.append(f"{entry['file']}: {entry['name']} usa `{entry['current']}` em vez de "
                             'um SHA completo')
@@ -195,7 +207,9 @@ def availability(entries, run=subprocess.run):
     checked = []
     for entry in entries:
         record = dict(entry)
-        if entry['kind'] in ('action', 'reusable-workflow'):
+        if entry['kind'] == 'local-key':
+            record = wolfi_trust.upstream_status(entry)
+        elif entry['kind'] in ('action', 'reusable-workflow'):
             owner_repo = '/'.join(entry['name'].split('/')[:2])
             commit = gh_json(f"repos/{owner_repo}/commits/{entry['current']}", run)
             record['available'] = bool(commit and commit.get('sha') == entry['current'])
@@ -233,7 +247,7 @@ def update_prs(pulls, now, stale_days=7):
 
 
 def render(entries, prs=None, stale_days=7):
-    lines = ['## Pins de ferramentas (M09)', '',
+    lines = ['## Pins de ferramentas e trust anchor (M09/P1-03)', '',
              '| Insumo | Valor efetivo | Arquivo(s) | Gerenciador | Disponível |',
              '| --- | --- | --- | --- | --- |']
     grouped = {}
@@ -247,6 +261,15 @@ def render(entries, prs=None, stale_days=7):
         lines.append(f"| `{name}` ({kind}) | `{short}` | "
                      f"{', '.join(f'`{path}`' for path in sorted(set(data['files'])))} | "
                      f"{', '.join(data['managers']) or '**nenhum**'} | {available} |")
+    for entry in entries:
+        if entry['kind'] == 'local-key':
+            lines += ['', f"### {entry['name']} — detecção de rotação", '',
+                      f"- SHA-256 esperado: `{entry['expected_sha256']}`",
+                      f"- SHA-256 local: `{entry['actual_sha256']}`",
+                      f"- SHA-256 remoto: `{entry.get('remote_sha256')}`",
+                      f"- Estado remoto: `{entry.get('remote_status', 'not-checked')}`",
+                      '- Monitoramento não atualiza a chave nem acrescenta dependência do endpoint remoto de comparação ao build.']
+            lines += [f'- Erro local: {error}' for error in entry['errors']]
     if prs is not None:
         lines += ['', f'### PRs de atualização abertas (revisão pendente > {stale_days}d marcada)', '']
         if not prs:
@@ -268,19 +291,28 @@ def write(markdown, path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('lint', 'check'))
+    parser.add_argument('mode', choices=('lint', 'check', 'trust'))
     parser.add_argument('--repository', default='', help='owner/repo para as PRs de atualização')
     parser.add_argument('--stale-days', type=float, default=7)
     parser.add_argument('--markdown', help='arquivo de saída (ex.: $GITHUB_STEP_SUMMARY)')
     parser.add_argument('--json', dest='json_output', type=Path)
     args = parser.parse_args()
 
+    local_key = wolfi_trust.local_pin(ROOT)
+    if args.mode == 'trust':
+        problems = local_key['errors'] + wolfi_trust.config_errors(ROOT)
+        for problem in problems:
+            print(f'::error::{problem}', file=sys.stderr)
+        print(json.dumps(local_key, indent=2))
+        return 1 if problems else 0
+
     paths = scanned_files()
     entries = coverage(pins(paths),
                        renovate_matches(json.loads((ROOT / 'renovate.json').read_text()), paths),
                        dependabot_ecosystems(load_dependabot()))
+    entries.append(local_key)
     if args.mode == 'lint':
-        problems = lint(entries)
+        problems = lint(entries) + wolfi_trust.config_errors(ROOT)
         for problem in problems:
             print(f'::error::{problem}', file=sys.stderr)
         print(f'{len(entries)} pin(s) conferidos em {len(paths)} arquivo(s).')

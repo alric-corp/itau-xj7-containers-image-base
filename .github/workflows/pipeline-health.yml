@@ -8,6 +8,8 @@ name: Pipeline health (M09/M11/M04)
 #   que o cron não gera run nenhum, que não deixa run vermelho para olhar;
 # - disponibilidade de cada pin (Actions, imagens, versão do Trivy) na origem
 #   e idade das PRs de atualização abertas.
+# - divergência/indisponibilidade da signing key Wolfi: detecção somente;
+#   o build confere o pin local e não depende deste monitor remoto.
 #
 # Este workflow é, hoje, o próprio canal de alerta: quando um limite da
 # política (policies/operations/health.json) é rompido, o job falha e o GitHub
@@ -48,7 +50,7 @@ jobs:
 
       # Roda antes das métricas: um pin que sumiu da origem quebra o próximo
       # build, e o resultado precisa aparecer mesmo se a métrica falhar.
-      - name: Check tool pins and update PRs
+      - name: Check tool pins, Wolfi key divergence and update PRs
         id: pins
         continue-on-error: true
         env:
@@ -91,6 +93,6 @@ jobs:
           METRICS: ${{ steps.metrics.outcome }}
         run: |
           set -eu
-          test "$PINS" = success || echo "::error::pins indisponíveis ou não conferidos"
+          test "$PINS" = success || echo "::error::pins indisponíveis, divergentes ou não conferidos"
           test "$METRICS" = success || echo "::error::limites de saúde operacional rompidos"
           test "$PINS" = success && test "$METRICS" = success

@@ -11,7 +11,8 @@ domínios; integração e execução real de imagens são camadas separadas.
 
 ## Ambiente
 
-Python 3.9 ou superior, Git e Make executam os testes unitários. A dependência
+Python 3.9 ou superior, Git, Make e OpenSSL executam os testes unitários
+(OpenSSL faz parsing da signing key RSA pública; sem Docker ou rede). A dependência
 Python da automação é fixada em `requirements-dev.txt`; não entra nas imagens.
 Use um ambiente virtual para não modificar o Python do sistema:
 
