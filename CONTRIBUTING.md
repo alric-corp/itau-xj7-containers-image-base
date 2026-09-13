@@ -1,5 +1,9 @@
 # Contribuição e validação local
 
+Para trabalhar com Codex, Claude Code ou Copilot, consulte o
+[guia de engenharia com IA](docs/ai/README.md) e as
+[instruções compartilhadas](AGENTS.md).
+
 Comece pelo [mapa de responsabilidades](docs/repository-architecture.md).
 Regras do produto ficam em `scripts/pipeline/`, configuração em `policies/`
 e composição de jobs em `.github/workflows/`. Os testes unitários espelham os
