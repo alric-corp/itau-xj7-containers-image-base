@@ -13,6 +13,7 @@
 | Consultar políticas executáveis | [Políticas](../policies/README.md) |
 | Consultar decisões pontuais e seu estado | [ADRs](adr/README.md) |
 | Operar alertas, cron e retenção | [Saúde operacional](m11-m04-operational-health.md) |
+| Revisar signing key Wolfi e rotação | [Wolfi signing-key defense-in-depth](wolfi-signing-key.md) |
 | Recuperar stable | [Runbook de recuperação](../README.md#recuperação-de-stable-runbook-m15) |
 | Entender gates e hardening | [Inventário de gates](m12-gate-inventory.md), [revisão M09–M16](m09-m16-review.md) |
 | Consultar a decisão sobre cache | [Política de cache](m09-m16-cache-policy.md) |

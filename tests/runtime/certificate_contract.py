@@ -16,10 +16,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.certificates.prepare_anchors import stage, verify
+from scripts.pipeline.governance.wolfi_trust import require_key
 from scripts.pipeline.runtime.runtime_images import supported, run, command
 
 
 def check(framework, reports):
+    require_key(ROOT)
     compiled = supported(framework) == 'compiled'
     reports = Path(reports).resolve()
     date = command('git', 'show', '-s', '--format=%cI', 'HEAD')
@@ -34,6 +36,8 @@ def check(framework, reports):
         for arch in ('x86_64', 'aarch64'):
             (melange / 'packages' / arch).mkdir(parents=True)
         shutil.copy(ROOT / 'melange/image-base-ca-certificates.yaml', melange)
+        shutil.copytree(ROOT / 'melange/keys', melange / 'keys')
+        require_key(workspace)
         identity = workspace / 'trusted'
         command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                 '-keyout', str(identity) + '.key', '-out', str(identity) + '.pem',

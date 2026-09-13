@@ -22,7 +22,7 @@ MELANGE_REPO := melange/packages
 DOCKER_MELANGE := docker run --rm -v "$(CURDIR)/melange":/work -w /work cgr.dev/chainguard/melange@sha256:43d6581e5f04b2f63b842782e581c4e06ff9ea23c81f0b3c8b9967034e38d90b
 
 
-.PHONY: certificates oci help list keygen bundle build run clean test test-unit test-integration lint lint-local lint-shared lint-workflows check
+.PHONY: certificates oci help list keygen bundle build run clean test test-unit test-integration lint lint-local lint-shared lint-workflows check wolfi-trust
 
 help:
 	@echo "Build local das imagens deste repositorio (sem publicar em nenhum registry)."
@@ -83,7 +83,10 @@ $(MELANGE_KEY):
 keygen: $(MELANGE_KEY)
 
 # Âncoras revisadas; o perfil público não duplica o bundle fornecido pelo Wolfi.
-$(MELANGE_REPO): $(MELANGE_KEY) melange/image-base-ca-certificates.yaml $(wildcard melange/certificates/* melange/certificates/anchors/*)
+wolfi-trust:
+	$(PYTHON) -B -m scripts.pipeline.governance.pin_inventory trust
+
+$(MELANGE_REPO): $(MELANGE_KEY) melange/image-base-ca-certificates.yaml $(wildcard melange/certificates/* melange/certificates/anchors/* melange/keys/*) | wolfi-trust
 	$(PYTHON) -B scripts/certificates/prepare_anchors.py verify
 	@mkdir -p $(MELANGE_REPO)/x86_64 $(MELANGE_REPO)/aarch64
 	@set -eu; for BUILD_ARCH in x86_64 aarch64; do \
@@ -92,7 +95,7 @@ $(MELANGE_REPO): $(MELANGE_KEY) melange/image-base-ca-certificates.yaml $(wildca
 	done
 	@touch $(MELANGE_REPO)
 
-bundle: $(MELANGE_REPO)
+bundle: wolfi-trust $(MELANGE_REPO)
 
 oci: bundle
 ifndef FRAMEWORK

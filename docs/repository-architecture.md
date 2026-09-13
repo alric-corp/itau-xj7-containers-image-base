@@ -11,7 +11,7 @@ Os diretórios consumidos pelo contrato Apko (`frameworks/`, `distroless/`,
 | --- | --- |
 | `distroless/` | Base comum herdada por todas as imagens |
 | `frameworks/` | Catálogo declarativo de runtimes e variantes de build `-dev` |
-| `melange/` | Receita do pacote adicional de certificados; chaves e pacotes locais são ignorados pelo Git |
+| `melange/` | Receita do pacote adicional de certificados; `keys/` contém signing key Wolfi pública e pin revisados; private keys e pacotes gerados são ignorados |
 | `scripts/certificates/` | Aquisição, verificação e pins do bundle corporativo |
 | `scripts/pipeline/catalog/` | Validação de framework, soak e digest antes de operações privilegiadas; lote padrão = catálogo − exclusões |
 | `scripts/pipeline/artifacts/` | Índices OCI, referências por digest e execução de scans |
@@ -50,10 +50,13 @@ flowchart LR
     operations --> runtime
     runtime --> artifacts
     release --> artifacts
+    artifacts --> governance
     catalog
 ```
 
-`catalog`, `artifacts` e `governance` não dependem de outros domínios.
+`catalog` e `governance` não dependem de outros domínios. `artifacts/build_image`
+consulta somente a verificação offline de `governance/wolfi_trust` antes de
+lock/build, compartilhando o mesmo pin do inventory sem duplicar a policy.
 `operations` pode consultar o plano de runtime e os contratos de governança.
 Imports dentro do próprio domínio são permitidos. Nova dependência exige uma
 mudança explícita nesta documentação e no teste de arquitetura.
