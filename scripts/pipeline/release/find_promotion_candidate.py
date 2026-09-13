@@ -173,7 +173,8 @@ def main() -> None:
     now = datetime.datetime.now(datetime.timezone.utc)
     candidate = select_candidate(details, soak_hours, now, quarantined)
     evidence = dict(stable_state(details, now), repository=repo, soak_hours=soak_hours,
-                    evaluated_at=now.isoformat(), promoted=False)
+                    evaluated_at=now.isoformat(), promoted=False, candidate_digest=None,
+                    stable_digest_observed=None, read_back_status='not_run')
 
     if candidate is None:
         reason = skip_reason(details, soak_hours, now, quarantined)
@@ -191,9 +192,8 @@ def main() -> None:
     emit("tag", tag)
     emit("digest", digest)
     emit("image", f"{registry}/{repo}")
-    # `promoted` continua falso aqui: só o passo de promoção sabe se o push da
-    # tag stable aconteceu. O workflow reescreve este arquivo depois.
-    evidence.update(reason="candidato elegível", tag=tag, digest=digest,
+    # `promoted` continua falso até o workflow confirmar a escrita e o read-back.
+    evidence.update(reason="candidato elegível", tag=tag, digest=digest, candidate_digest=digest,
                     image=f"{registry}/{repo}")
     write_evidence(evidence_path, evidence)
 

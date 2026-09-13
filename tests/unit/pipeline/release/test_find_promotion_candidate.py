@@ -183,11 +183,15 @@ class CandidateTests(unittest.TestCase):
             self.assertIn("quarentena", recorded["reason"])
             self.assertEqual(recorded["repository"], "test")
             self.assertIsNone(recorded["stable_digest"])
+            self.assertIsNone(recorded["candidate_digest"])
+            self.assertIsNone(recorded["stable_digest_observed"])
+            self.assertEqual(recorded["read_back_status"], "not_run")
 
     def test_cli_github_output_contract(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "images.json"
             output = Path(directory) / "output"
+            evidence = Path(directory) / "promotion-evidence.json"
             for details, expected in (
                 ([image()], {"skip": "false", "reason": "candidato elegível",
                              "tag": "070926-0000", "digest": "sha256:build",
@@ -203,13 +207,18 @@ class CandidateTests(unittest.TestCase):
                 output.write_text("")
                 result = subprocess.run(
                     [sys.executable, "-B", str(SCRIPT), str(source), "6",
-                     "example.invalid", "test"],
+                     "example.invalid", "test", "--evidence", str(evidence)],
                     env={**os.environ, "GITHUB_OUTPUT": str(output)},
                     capture_output=True, text=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(dict(line.split("=", 1) for line in
                                       output.read_text().splitlines()), expected)
+                recorded = json.loads(evidence.read_text())
+                self.assertFalse(recorded["promoted"])
+                self.assertEqual(recorded["candidate_digest"], expected.get("digest"))
+                self.assertIsNone(recorded["stable_digest_observed"])
+                self.assertEqual(recorded["read_back_status"], "not_run")
 
 
 class QuarantineWiringTests(unittest.TestCase):

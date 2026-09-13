@@ -173,16 +173,26 @@ jobs:
         run: |
           set -eu
           docker buildx imagetools create --tag "${IMAGE}:stable" "${IMAGE}@${DIGEST}"
-          echo "promovido ${IMAGE}:${TAG} -> ${IMAGE}:stable"
+          echo "tag escrita ${IMAGE}:${TAG} -> ${IMAGE}:stable; aguardando read-back"
+
+      - name: Confirm stable via independent ECR read-back
+        id: readback
+        if: steps.candidate.outputs.skip == 'false'
+        env:
+          IMAGE: ${{ steps.candidate.outputs.image }}
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          python3 -B -m scripts.pipeline.release.verify_stable "$IMAGE" "$DIGEST" \
+            --evidence reports/promotion-evidence.json
 
       # M11/M04: a evidência registra o que aconteceu de fato — promoveu, ou
       # pulou e por quê, com a idade real do stable medida pelo push no ECR.
-      # `promoted` só vira verdadeiro depois que o push da tag terminou; o
-      # passo roda mesmo quando a promoção falhou, para não perder o motivo.
+      # `promoted` exige escrita e read-back do mesmo índice confirmados; este
+      # passo roda mesmo quando a promoção falhou, para preservar o resultado.
       - name: Record promotion outcome
         if: ${{ !cancelled() }}
         env:
-          PROMOTED: ${{ steps.promote.outcome == 'success' }}
+          PROMOTED: ${{ steps.promote.outcome == 'success' && steps.readback.outcome == 'success' }}
           SKIPPED: ${{ steps.candidate.outputs.skip }}
           REASON: ${{ steps.candidate.outputs.reason }}
         run: |
@@ -197,13 +207,22 @@ jobs:
           # candidato" e a tabela do run precisa distinguir os dois.
           evaluated = path.is_file()
           evidence = json.loads(path.read_text()) if evaluated else {}
-          evidence['promoted'] = os.environ['PROMOTED'] == 'true'
+          evidence.setdefault('candidate_digest', evidence.get('digest'))
+          evidence.setdefault('stable_digest_observed', None)
+          evidence.setdefault('read_back_status', 'not_run')
           evidence['skipped'] = os.environ['SKIPPED'] == 'true'
+          evidence['promoted'] = (os.environ['PROMOTED'] == 'true'
+                                  and not evidence['skipped']
+                                  and evidence['read_back_status'] == 'confirmed'
+                                  and bool(evidence['candidate_digest'])
+                                  and evidence['candidate_digest'] == evidence.get('digest')
+                                  and evidence['stable_digest_observed'] == evidence['candidate_digest'])
           if not evaluated:
               evidence['reason'] = 'gate de promoção não chegou a avaliar candidato (ver log)'
           elif not evidence['promoted'] and not evidence['skipped']:
               evidence['reason'] = ('candidato elegível, promoção não concluída: '
-                                    + (os.environ['REASON'] or evidence.get('reason') or 'ver log'))
+                                    + (evidence.get('read_back_error') or os.environ['REASON']
+                                       or evidence.get('reason') or 'ver log'))
           path.parent.mkdir(parents=True, exist_ok=True)
           path.write_text(json.dumps(evidence, indent=2) + '\n')
           print(json.dumps(evidence, indent=2))
